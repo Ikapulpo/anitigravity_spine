@@ -98,7 +98,8 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
     const filteredPatients = yearFilteredPatients.filter((p) =>
         String(p.id).toLowerCase().includes(filter.toLowerCase()) ||
         String(p.outcome).toLowerCase().includes(filter.toLowerCase()) ||
-        String(p.fractureLevel).toLowerCase().includes(filter.toLowerCase())
+        String(p.fractureLevel).toLowerCase().includes(filter.toLowerCase()) ||
+        String(p.newFractures).toLowerCase().includes(filter.toLowerCase())
     );
 
     return (
@@ -248,7 +249,7 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                     <td className="px-6 py-4">{patient.age} / {patient.gender}</td>
                                     <td className="px-6 py-4">
                                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                            {patient.fractureLevel}
+                                            {patient.newFractures || "-"}
                                         </span>
                                     </td>
                                     <td className="px-6 py-4">{patient.admissionDate}</td>
