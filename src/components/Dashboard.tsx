@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { PatientRecord } from "@/types/patient";
 import { fetchPatients } from "@/services/dataService";
+import { logout } from "@/app/actions/auth";
 
 // Simple UI components (since we don't have the full shadcn/ui library installed via CLI yet, 
 // I'll implement basic versions or use raw HTML/Tailwind for now to avoid dependency issues 
@@ -123,6 +124,12 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                             <option key={year} value={year}>{year}</option>
                         ))}
                     </select>
+                    <button
+                        onClick={() => logout()}
+                        className="ml-4 px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    >
+                        Logout
+                    </button>
                 </div>
             </header>
 
@@ -238,6 +245,7 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                 <th className="px-6 py-4">Fracture Level</th>
                                 <th className="px-6 py-4">Admission Date</th>
                                 <th className="px-6 py-4">Hospitalization</th>
+                                <th className="px-6 py-4">MRI</th>
                                 <th className="px-6 py-4">Outcome</th>
                                 <th className="px-6 py-4">Status</th>
                             </tr>
@@ -254,6 +262,21 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                     </td>
                                     <td className="px-6 py-4">{patient.admissionDate}</td>
                                     <td className="px-6 py-4">{patient.hospitalizationPeriod}</td>
+                                    <td className="px-6 py-4">
+                                        {patient.mriImage ? (
+                                            <a
+                                                href={patient.mriImage}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                                            >
+                                                <Search size={16} />
+                                                <span className="text-xs">View</span>
+                                            </a>
+                                        ) : (
+                                            <span className="text-gray-400">-</span>
+                                        )}
+                                    </td>
                                     <td className="px-6 py-4">
                                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${patient.outcome.includes("Surgery")
                                             ? "bg-red-100 text-red-800"
