@@ -264,15 +264,20 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                     <td className="px-6 py-4">{patient.hospitalizationPeriod}</td>
                                     <td className="px-6 py-4">
                                         {patient.mriImage ? (
-                                            <a
-                                                href={patient.mriImage}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
-                                            >
-                                                <Search size={16} />
-                                                <span className="text-xs">View</span>
-                                            </a>
+                                            <div className="flex flex-col gap-1">
+                                                {patient.mriImage.split(/[,、\s]+/).filter(url => url.trim().startsWith('http')).map((url, index) => (
+                                                    <a
+                                                        key={index}
+                                                        href={url.trim()}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                                                    >
+                                                        <Search size={16} />
+                                                        <span className="text-xs">View {index + 1}</span>
+                                                    </a>
+                                                ))}
+                                            </div>
                                         ) : (
                                             <span className="text-gray-400">-</span>
                                         )}
