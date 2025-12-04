@@ -305,10 +305,12 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                     </td>
                                     <td className="px-6 py-4">{patient.admissionDate}</td>
                                     <td className="px-6 py-4">
-                                        {calculateHospitalizationDays(patient.admissionDate, patient.hospitalizationPeriod)
-                                            ? `${calculateHospitalizationDays(patient.admissionDate, patient.hospitalizationPeriod)} days`
-                                            : "-"
-                                        }
+                                        {(() => {
+                                            const days = calculateHospitalizationDays(patient.admissionDate, patient.hospitalizationPeriod);
+                                            if (days !== null) return `${days} days`;
+                                            // Fallback: show raw value if available, for debugging
+                                            return patient.hospitalizationPeriod ? String(patient.hospitalizationPeriod) : "-";
+                                        })()}
                                     </td>
                                     <td className="px-6 py-4">
                                         {patient.mriImage ? (
