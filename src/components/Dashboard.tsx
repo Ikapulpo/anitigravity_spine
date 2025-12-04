@@ -352,13 +352,12 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                             const sourceVal = patient.hospitalizationPeriod || patient.followUpStatus;
                                             const days = calculateHospitalizationDays(patient.admissionDate, sourceVal, patient.timestamp);
 
-                                            // Debug: Show raw source value
-                                            return (
-                                                <div className="flex flex-col">
-                                                    <span>{days !== null ? `${days} days` : "-"}</span>
-                                                    <span className="text-xs text-gray-400">Raw: {String(sourceVal)} ({typeof sourceVal})</span>
-                                                </div>
-                                            );
+                                            if (days !== null) return `${days} days`;
+                                            // Debug: If admission exists but calculation failed, show raw value AND admission date
+                                            if (patient.admissionDate) {
+                                                return `${String(sourceVal || "")} (Adm: ${patient.admissionDate})`;
+                                            }
+                                            return "-";
                                         })()}
                                     </td>
                                     <td className="px-6 py-4">
@@ -369,18 +368,26 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                             // Use followUpStatus as fallback for discharge date (same as hospitalization logic)
                                             const dischargeVal = patient.hospitalizationPeriod || patient.followUpStatus;
 
+                                            // Check if dischargeVal is a number (total days)
+                                            const isTotalDays = !isNaN(Number(dischargeVal)) && Number(dischargeVal) < 1000;
+
+                                            if (isTotalDays) {
+                                                // Calculate pre-op days (Surgery - Admission)
+                                                // Note: calculateHospitalizationDays handles date parsing for both
+                                                const preOpDays = calculateHospitalizationDays(patient.admissionDate, patient.surgeryDate, patient.timestamp);
+
+                                                if (preOpDays !== null) {
+                                                    const postOp = Number(dischargeVal) - preOpDays;
+                                                    return `${postOp} days`;
+                                                }
+                                            }
+
+                                            // If dischargeVal is a date, or fallback if pre-op calc failed
                                             // Calculate days from Surgery Date to Discharge Date
                                             const days = calculateHospitalizationDays(patient.surgeryDate, dischargeVal, patient.timestamp);
 
-                                            return (
-                                                <div className="flex flex-col">
-                                                    <span>{days !== null ? `${days} days` : "-"}</span>
-                                                    <span className="text-xs text-gray-400">
-                                                        S: {patient.surgeryDate} <br />
-                                                        D: {String(dischargeVal)}
-                                                    </span>
-                                                </div>
-                                            );
+                                            if (days !== null) return `${days} days`;
+                                            return "-";
                                         })()}
                                     </td>
                                     <td className="px-6 py-4">
