@@ -329,6 +329,7 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                 <th className="px-6 py-4">Fracture Level</th>
                                 <th className="px-6 py-4">Admission Date</th>
                                 <th className="px-6 py-4">Hospitalization</th>
+                                <th className="px-6 py-4">Post-op Days</th>
                                 <th className="px-6 py-4">MRI</th>
                                 <th className="px-6 py-4">Outcome</th>
                                 <th className="px-6 py-4">Status</th>
@@ -356,6 +357,21 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                             if (patient.admissionDate) {
                                                 return `${String(sourceVal || "")} (Adm: ${patient.admissionDate})`;
                                             }
+                                            return "-";
+                                        })()}
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        {(() => {
+                                            // Only show for surgery patients
+                                            if (!patient.outcome.includes("Surgery") && !patient.outcome.includes("手術")) return "-";
+
+                                            // Use followUpStatus as fallback for discharge date (same as hospitalization logic)
+                                            const dischargeVal = patient.hospitalizationPeriod || patient.followUpStatus;
+
+                                            // Calculate days from Surgery Date to Discharge Date
+                                            const days = calculateHospitalizationDays(patient.surgeryDate, dischargeVal, patient.timestamp);
+
+                                            if (days !== null) return `${days} days`;
                                             return "-";
                                         })()}
                                     </td>
@@ -395,7 +411,7 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                             ))}
                             {filteredPatients.length === 0 && (
                                 <tr>
-                                    <td colSpan={7} className="px-6 py-8 text-center text-gray-400">
+                                    <td colSpan={9} className="px-6 py-8 text-center text-gray-400">
                                         No patients found matching your search.
                                     </td>
                                 </tr>

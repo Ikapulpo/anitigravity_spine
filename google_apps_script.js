@@ -34,6 +34,7 @@ function doGet() {
         record.timeToAdmission = row[17];
         record.outcome = row[18];
         record.dischargeDate = row[19];
+        record.surgeryDate = row[20]; // Column U
         record.hospitalizationPeriod = row[22]; // Column W
         record.dischargeDestination = row[21];
         record.followUpStatus = row[22]; // Note: This might be incorrect if W is now Hospitalization. Leaving as is for now unless user specifies otherwise, or maybe I should comment it out?
