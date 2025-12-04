@@ -374,7 +374,9 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                             if (days !== null) return `${days} days`;
 
                                             // Debug output
-                                            return `[${patient.surgeryDate}] -> [${dischargeVal}]`;
+                                            // Show available keys to debug why surgeryDate is undefined
+                                            const keys = Object.keys(patient).filter(k => k.includes('Date') || k.includes('surgery'));
+                                            return `[${patient.surgeryDate}] Keys: ${keys.join(', ')}`;
                                         })()}
                                     </td>
                                     <td className="px-6 py-4">
