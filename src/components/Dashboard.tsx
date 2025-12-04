@@ -56,13 +56,40 @@ const calculateHospitalizationDays = (admission: string, dischargeOrPeriod: stri
     const isDate = !isNaN(Date.parse(valStr)) && (valStr.includes("-") || valStr.includes("/"));
 
     if (isDate) {
-        const startDate = new Date(admission);
+        let startDate = new Date(admission);
         const endDate = new Date(valStr);
+
+        // Handle partial admission date (e.g. "02-17") which defaults to 2001 or current year
+        // We infer the year from the discharge date (endDate)
+        if (!isNaN(endDate.getTime())) {
+            const dischargeYear = endDate.getFullYear();
+
+            // Check if admission is likely missing a year (e.g. year is 2001)
+            // Or if the string itself is short (e.g. "02-17")
+            const isPartialDate = admission.match(/^\d{1,2}[-/]\d{1,2}$/);
+
+            if (isPartialDate || startDate.getFullYear() < 2020) {
+                // Parse MM-DD manually to be safe
+                const parts = admission.split(/[-/]/);
+                if (parts.length >= 2) {
+                    const month = parseInt(parts[0]) - 1; // 0-indexed
+                    const day = parseInt(parts[1]);
+
+                    // Construct date with discharge year
+                    startDate = new Date(dischargeYear, month, day);
+
+                    // If admission > discharge (e.g. Adm: Dec 31, Dis: Jan 2), subtract 1 year from admission
+                    if (startDate > endDate) {
+                        startDate.setFullYear(dischargeYear - 1);
+                    }
+                }
+            }
+        }
 
         if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
             const diffTime = endDate.getTime() - startDate.getTime();
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            // Ensure non-negative. Removed 365 limit to debug "8771 days" issue.
+            // Ensure non-negative.
             if (diffDays >= 0) {
                 return diffDays;
             }
