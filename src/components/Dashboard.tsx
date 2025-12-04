@@ -32,6 +32,8 @@ import { logout } from "@/app/actions/auth";
 // Wait, I can just use standard Tailwind classes for layout.)
 
 // Helper to calculate hospitalization days
+const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8"];
+
 const calculateHospitalizationDays = (admission: string, dischargeOrPeriod: string | number): number | null => {
     if (!dischargeOrPeriod) return null;
 
