@@ -396,9 +396,9 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                         )}
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${patient.outcome.includes("Surgery")
-                                            ? "bg-red-100 text-red-800"
-                                            : "bg-green-100 text-green-800"
+                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${patient.outcome.includes("Surgery") || patient.outcome.includes("手術")
+                                                ? "bg-red-100 text-red-800"
+                                                : "bg-green-100 text-green-800"
                                             }`}>
                                             {patient.outcome}
                                         </span>
