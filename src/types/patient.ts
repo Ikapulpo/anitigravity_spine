@@ -18,6 +18,7 @@ export interface PatientRecord {
   newFractures: string;
   timeToAdmission: string;
   outcome: string; // 転機
+  procedure: string; // 術式
   surgeryDate: string;
   dischargeDate: string;
   hospitalizationPeriod: string;

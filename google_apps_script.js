@@ -33,7 +33,7 @@ function doGet() {
         record.newFractures = row[16];
         record.timeToAdmission = row[17];
         record.outcome = row[18];
-        record.dischargeDate = row[19];
+        record.procedure = row[19]; // Column T (was dischargeDate, but contains procedure like BKP)
         record.surgeryDate = row[20]; // Column U
         record.hospitalizationPeriod = row[22]; // Column W
         record.dischargeDestination = row[21];

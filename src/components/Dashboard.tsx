@@ -180,6 +180,58 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
         ? Math.round(hospitalizationDays.reduce((a, b) => a + b, 0) / hospitalizationDays.length)
         : 0;
 
+    // Calculate Average Post-op Days
+    const postOpDaysList = yearFilteredPatients
+        .filter(p => p.outcome.includes("Surgery") || p.outcome.includes("手術"))
+        .map(p => {
+            const dischargeVal = p.hospitalizationPeriod || p.followUpStatus;
+            const isTotalDays = !isNaN(Number(dischargeVal)) && Number(dischargeVal) < 1000;
+
+            if (isTotalDays) {
+                const preOpDays = calculateHospitalizationDays(p.admissionDate, p.surgeryDate, p.timestamp);
+                if (preOpDays !== null) {
+                    return Number(dischargeVal) - preOpDays;
+                }
+            }
+            return calculateHospitalizationDays(p.surgeryDate, dischargeVal, p.timestamp);
+        })
+        .filter((d): d is number => d !== null && d >= 0); // Filter out null and negative values
+
+    const avgPostOpDays = postOpDaysList.length > 0
+        ? Math.round(postOpDaysList.reduce((a, b) => a + b, 0) / postOpDaysList.length)
+        : 0;
+
+    // Calculate Avg Post-op Days by Procedure
+    const procedurePostOpData = yearFilteredPatients
+        .filter(p => (p.outcome.includes("Surgery") || p.outcome.includes("手術")) && p.procedure)
+        .reduce((acc: any[], curr) => {
+            const dischargeVal = curr.hospitalizationPeriod || curr.followUpStatus;
+            let days: number | null = null;
+
+            const isTotalDays = !isNaN(Number(dischargeVal)) && Number(dischargeVal) < 1000;
+            if (isTotalDays) {
+                const preOpDays = calculateHospitalizationDays(curr.admissionDate, curr.surgeryDate, curr.timestamp);
+                if (preOpDays !== null) {
+                    days = Number(dischargeVal) - preOpDays;
+                }
+            } else {
+                days = calculateHospitalizationDays(curr.surgeryDate, dischargeVal, curr.timestamp);
+            }
+
+            if (days !== null) {
+                const existing = acc.find((item) => item.name === curr.procedure);
+                if (existing) {
+                    existing.totalDays += days;
+                    existing.count++;
+                    existing.value = Math.round(existing.totalDays / existing.count);
+                } else {
+                    acc.push({ name: curr.procedure, totalDays: days, count: 1, value: days });
+                }
+            }
+            return acc;
+        }, [])
+        .sort((a: any, b: any) => b.value - a.value);
+
     const filteredPatients = yearFilteredPatients.filter((p) =>
         String(p.id).toLowerCase().includes(filter.toLowerCase()) ||
         String(p.outcome).toLowerCase().includes(filter.toLowerCase()) ||
@@ -258,10 +310,20 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                         <h3 className="text-2xl font-bold text-gray-900">{avgHospitalization} days</h3>
                     </div>
                 </div>
+
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center">
+                    <div className="p-3 rounded-full bg-indigo-100 text-indigo-600 mr-4">
+                        <Activity size={24} />
+                    </div>
+                    <div>
+                        <p className="text-sm text-gray-500 font-medium">Avg. Post-op Days</p>
+                        <h3 className="text-2xl font-bold text-gray-900">{avgPostOpDays} days</h3>
+                    </div>
+                </div>
             </div>
 
             {/* Charts Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">Outcome Distribution</h3>
                     <div className="h-64">
@@ -302,33 +364,49 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                         </ResponsiveContainer>
                     </div>
                 </div>
+
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Avg Post-op Days by Procedure</h3>
+                    <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={procedurePostOpData}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                <XAxis dataKey="name" />
+                                <YAxis allowDecimals={false} />
+                                <Tooltip cursor={{ fill: 'transparent' }} />
+                                <Bar dataKey="value" fill="#10b981" radius={[4, 4, 0, 0]} name="Days" />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
             </div>
 
             {/* Patient Table */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <h3 className="text-lg font-semibold text-gray-900">Patient List</h3>
                     <div className="relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                         <input
                             type="text"
-                            placeholder="Search ID, Outcome..."
-                            className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm w-full sm:w-64"
+                            placeholder="Search patients..."
                             value={filter}
                             onChange={(e) => setFilter(e.target.value)}
+                            className="pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full md:w-64"
                         />
                     </div>
                 </div>
 
                 <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm text-gray-600">
-                        <thead className="bg-gray-50 text-gray-700 font-medium border-b border-gray-100">
+                        <thead className="bg-gray-50 text-xs uppercase font-semibold text-gray-500">
                             <tr>
                                 <th className="px-6 py-4">ID</th>
                                 <th className="px-6 py-4">Age / Gender</th>
                                 <th className="px-6 py-4">Fracture Level</th>
                                 <th className="px-6 py-4">Admission Date</th>
                                 <th className="px-6 py-4">Hospitalization</th>
+                                <th className="px-6 py-4">Procedure</th>
                                 <th className="px-6 py-4">Post-op Days</th>
                                 <th className="px-6 py-4">MRI</th>
                                 <th className="px-6 py-4">Outcome</th>
@@ -359,6 +437,9 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                             }
                                             return "-";
                                         })()}
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        {patient.procedure || "-"}
                                     </td>
                                     <td className="px-6 py-4">
                                         {(() => {
@@ -426,7 +507,7 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                             ))}
                             {filteredPatients.length === 0 && (
                                 <tr>
-                                    <td colSpan={9} className="px-6 py-8 text-center text-gray-400">
+                                    <td colSpan={10} className="px-6 py-8 text-center text-gray-400">
                                         No patients found matching your search.
                                     </td>
                                 </tr>
