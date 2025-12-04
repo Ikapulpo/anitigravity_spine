@@ -62,8 +62,8 @@ const calculateHospitalizationDays = (admission: string, dischargeOrPeriod: stri
         if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
             const diffTime = endDate.getTime() - startDate.getTime();
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            // Sanity check: 0 to 365 days
-            if (diffDays >= 0 && diffDays <= 365) {
+            // Ensure non-negative. Removed 365 limit to debug "8771 days" issue.
+            if (diffDays >= 0) {
                 return diffDays;
             }
         }
@@ -312,9 +312,9 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                         {(() => {
                                             const days = calculateHospitalizationDays(patient.admissionDate, patient.hospitalizationPeriod);
                                             if (days !== null) return `${days} days`;
-                                            // Debug: If admission exists but calculation failed, show raw value
+                                            // Debug: If admission exists but calculation failed, show raw value AND admission date
                                             if (patient.admissionDate) {
-                                                return String(patient.hospitalizationPeriod);
+                                                return `${String(patient.hospitalizationPeriod)} (Adm: ${patient.admissionDate})`;
                                             }
                                             return "-";
                                         })()}
