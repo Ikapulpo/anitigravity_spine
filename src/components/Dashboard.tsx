@@ -50,6 +50,9 @@ const calculateHospitalizationDays = (admission: string, dischargeOrPeriod: stri
     // If admission is empty, it's an outpatient (or invalid), so return null (display "-")
     if (!admission) return null;
 
+    // Optimization: if strings are identical, 0 days
+    if (valStr === String(admission).trim()) return 0;
+
     // Case 3: It looks like a date AND admission exists
     const isDate = !isNaN(Date.parse(valStr)) || valStr.includes("-") || valStr.includes("/");
 
@@ -67,7 +70,8 @@ const calculateHospitalizationDays = (admission: string, dischargeOrPeriod: stri
         const parseDate = (dateStr: string, year: number): Date => {
             const cleanStr = String(dateStr).trim();
             // Check for MM-DD format (e.g. "02-17" or "2/17")
-            const mmDdMatch = cleanStr.match(/^(\d{1,2})[-/](\d{1,2})$/);
+            // Broaden regex to allow any non-digit separator
+            const mmDdMatch = cleanStr.match(/^(\d{1,2})[^\d](\d{1,2})$/);
             if (mmDdMatch) {
                 const month = parseInt(mmDdMatch[1]) - 1; // 0-indexed
                 const day = parseInt(mmDdMatch[2]);
@@ -357,7 +361,7 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                                 // Re-run parse logic for debug display
                                                 const parseDate = (dateStr: string, year: number) => {
                                                     const cleanStr = String(dateStr).trim();
-                                                    const mmDdMatch = cleanStr.match(/^(\d{1,2})[-/](\d{1,2})$/);
+                                                    const mmDdMatch = cleanStr.match(/^(\d{1,2})[^\d](\d{1,2})$/);
                                                     if (mmDdMatch) {
                                                         const month = parseInt(mmDdMatch[1]) - 1;
                                                         const day = parseInt(mmDdMatch[2]);
@@ -373,7 +377,7 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                                     ? Math.ceil((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24))
                                                     : "NaN";
 
-                                                return `${valStr} (Adm: ${patient.admissionDate}) -> Diff: ${diff}`;
+                                                return `[${valStr}] (Adm: [${patient.admissionDate}]) Y:${baseYear} S:${s.toDateString()} E:${e.toDateString()} -> Diff: ${diff}`;
                                             }
                                             return "-";
                                         })()}
