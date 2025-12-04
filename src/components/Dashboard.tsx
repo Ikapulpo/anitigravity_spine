@@ -372,11 +372,7 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                             const days = calculateHospitalizationDays(patient.surgeryDate, dischargeVal, patient.timestamp);
 
                                             if (days !== null) return `${days} days`;
-
-                                            // Debug output
-                                            // Show available keys to debug why surgeryDate is undefined
-                                            const keys = Object.keys(patient).filter(k => k.includes('Date') || k.includes('surgery'));
-                                            return `[${patient.surgeryDate}] Keys: ${keys.join(', ')}`;
+                                            return "-";
                                         })()}
                                     </td>
                                     <td className="px-6 py-4">
