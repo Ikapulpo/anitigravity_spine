@@ -173,7 +173,7 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
 
     // Calculate Average Hospitalization Period
     const hospitalizationDays = yearFilteredPatients
-        .map(p => calculateHospitalizationDays(p.admissionDate, p.hospitalizationPeriod, p.timestamp))
+        .map(p => calculateHospitalizationDays(p.admissionDate, p.hospitalizationPeriod || p.followUpStatus, p.timestamp))
         .filter((d): d is number => d !== null);
 
     const avgHospitalization = hospitalizationDays.length > 0
@@ -347,11 +347,14 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                     <td className="px-6 py-4">{patient.admissionDate}</td>
                                     <td className="px-6 py-4">
                                         {(() => {
-                                            const days = calculateHospitalizationDays(patient.admissionDate, patient.hospitalizationPeriod, patient.timestamp);
+                                            // Fallback to followUpStatus if hospitalizationPeriod is empty/invalid but followUpStatus looks like the data
+                                            const sourceVal = patient.hospitalizationPeriod || patient.followUpStatus;
+                                            const days = calculateHospitalizationDays(patient.admissionDate, sourceVal, patient.timestamp);
+
                                             if (days !== null) return `${days} days`;
                                             // Debug: If admission exists but calculation failed, show raw value AND admission date
                                             if (patient.admissionDate) {
-                                                return `${String(patient.hospitalizationPeriod)} (Adm: ${patient.admissionDate})`;
+                                                return `${String(sourceVal || "")} (Adm: ${patient.admissionDate})`;
                                             }
                                             return "-";
                                         })()}
@@ -384,7 +387,10 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                             {patient.outcome}
                                         </span>
                                     </td>
-                                    <td className="px-6 py-4 text-gray-500">{patient.followUpStatus}</td>
+                                    <td className="px-6 py-4 text-gray-500">
+                                        {/* Hide status if it looks like a number (mis-mapped hospitalization days) */}
+                                        {/^\d+$/.test(String(patient.followUpStatus).trim()) ? "-" : patient.followUpStatus}
+                                    </td>
                                 </tr>
                             ))}
                             {filteredPatients.length === 0 && (

@@ -114,7 +114,7 @@ export const fetchPatients = async (): Promise<PatientRecord[]> => {
     }
 
     try {
-        const response = await fetch(apiUrl, { next: { revalidate: 3600 } }); // ISR: Revalidate every hour
+        const response = await fetch(apiUrl, { next: { revalidate: 0 } }); // Disable cache for debugging
         if (!response.ok) {
             throw new Error(`Failed to fetch data: ${response.statusText}`);
         }
