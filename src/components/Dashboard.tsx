@@ -352,12 +352,13 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                             const sourceVal = patient.hospitalizationPeriod || patient.followUpStatus;
                                             const days = calculateHospitalizationDays(patient.admissionDate, sourceVal, patient.timestamp);
 
-                                            if (days !== null) return `${days} days`;
-                                            // Debug: If admission exists but calculation failed, show raw value AND admission date
-                                            if (patient.admissionDate) {
-                                                return `${String(sourceVal || "")} (Adm: ${patient.admissionDate})`;
-                                            }
-                                            return "-";
+                                            // Debug: Show raw source value
+                                            return (
+                                                <div className="flex flex-col">
+                                                    <span>{days !== null ? `${days} days` : "-"}</span>
+                                                    <span className="text-xs text-gray-400">Raw: {String(sourceVal)} ({typeof sourceVal})</span>
+                                                </div>
+                                            );
                                         })()}
                                     </td>
                                     <td className="px-6 py-4">
@@ -371,8 +372,15 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                             // Calculate days from Surgery Date to Discharge Date
                                             const days = calculateHospitalizationDays(patient.surgeryDate, dischargeVal, patient.timestamp);
 
-                                            if (days !== null) return `${days} days`;
-                                            return "-";
+                                            return (
+                                                <div className="flex flex-col">
+                                                    <span>{days !== null ? `${days} days` : "-"}</span>
+                                                    <span className="text-xs text-gray-400">
+                                                        S: {patient.surgeryDate} <br />
+                                                        D: {String(dischargeVal)}
+                                                    </span>
+                                                </div>
+                                            );
                                         })()}
                                     </td>
                                     <td className="px-6 py-4">
