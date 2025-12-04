@@ -33,6 +33,33 @@ import { logout } from "@/app/actions/auth";
 
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8"];
 
+// Helper to calculate hospitalization days
+const calculateHospitalizationDays = (admission: string, dischargeOrPeriod: string | number): number | null => {
+    if (!admission || !dischargeOrPeriod) return null;
+
+    const valStr = String(dischargeOrPeriod);
+
+    // Case 1: It's already a period string like "14 days" or just "14"
+    // If it's a small number (e.g. < 365), assume it's days. If it's a large number or date string, assume date.
+    // Simple check: does it look like a date?
+    const isDate = !isNaN(Date.parse(valStr)) && valStr.includes("-") || valStr.includes("/");
+
+    if (!isDate) {
+        const days = parseInt(valStr.replace(/[^0-9]/g, ''));
+        return isNaN(days) ? null : days;
+    }
+
+    // Case 2: It's a date (Discharge Date)
+    const startDate = new Date(admission);
+    const endDate = new Date(valStr);
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return null;
+
+    const diffTime = endDate.getTime() - startDate.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays > 0 ? diffDays : 0; // Ensure non-negative
+};
+
 export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
     const [filter, setFilter] = useState("");
     const [selectedYear, setSelectedYear] = useState<string>("All");
@@ -51,10 +78,15 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
     // Aggregations based on yearFilteredPatients
     const totalPatients = yearFilteredPatients.length;
     const surgeryCandidates = yearFilteredPatients.filter((p) =>
-        p.outcome.includes("Surgery") || p.remarks.toLowerCase().includes("surgery")
+        p.outcome.includes("Surgery") ||
+        p.outcome.includes("手術") ||
+        p.remarks.toLowerCase().includes("surgery")
     ).length;
     const observationPatients = yearFilteredPatients.filter((p) =>
-        p.outcome.includes("Observation")
+        p.outcome.includes("Observation") ||
+        p.outcome.includes("Conservative") ||
+        p.outcome.includes("保存") ||
+        p.outcome.includes("経過観察")
     ).length;
 
     // Chart Data
@@ -90,8 +122,9 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
 
     // Calculate Average Hospitalization Period
     const hospitalizationDays = yearFilteredPatients
-        .map(p => parseInt(String(p.hospitalizationPeriod).replace(/[^0-9]/g, '')))
-        .filter(d => !isNaN(d));
+        .map(p => calculateHospitalizationDays(p.admissionDate, p.hospitalizationPeriod))
+        .filter((d): d is number => d !== null);
+
     const avgHospitalization = hospitalizationDays.length > 0
         ? Math.round(hospitalizationDays.reduce((a, b) => a + b, 0) / hospitalizationDays.length)
         : 0;
@@ -261,7 +294,12 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                         </span>
                                     </td>
                                     <td className="px-6 py-4">{patient.admissionDate}</td>
-                                    <td className="px-6 py-4">{patient.hospitalizationPeriod}</td>
+                                    <td className="px-6 py-4">
+                                        {calculateHospitalizationDays(patient.admissionDate, patient.hospitalizationPeriod)
+                                            ? `${calculateHospitalizationDays(patient.admissionDate, patient.hospitalizationPeriod)} days`
+                                            : "-"
+                                        }
+                                    </td>
                                     <td className="px-6 py-4">
                                         {patient.mriImage ? (
                                             <div className="flex flex-col gap-1">

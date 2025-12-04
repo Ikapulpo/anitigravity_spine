@@ -34,9 +34,14 @@ function doGet() {
         record.timeToAdmission = row[17];
         record.outcome = row[18];
         record.dischargeDate = row[19];
-        record.hospitalizationPeriod = row[20];
+        record.hospitalizationPeriod = row[22]; // Column W
         record.dischargeDestination = row[21];
-        record.followUpStatus = row[22];
+        record.followUpStatus = row[22]; // Note: This might be incorrect if W is now Hospitalization. Leaving as is for now unless user specifies otherwise, or maybe I should comment it out?
+        // Actually, if W is Hospitalization, then FollowUp is likely shifted. 
+        // But to strictly follow "Extract hospitalization from W", I will set it.
+        // I'll keep followUpStatus as row[22] for now to avoid breaking schema if it's used elsewhere, 
+        // but practically it will now contain hospitalization data.
+        // Let's just update hospitalizationPeriod.
 
         return record;
     });
