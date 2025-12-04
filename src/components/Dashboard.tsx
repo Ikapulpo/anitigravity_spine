@@ -31,7 +31,42 @@ import { logout } from "@/app/actions/auth";
 // if the user didn't want full shadcn setup. 
 // Wait, I can just use standard Tailwind classes for layout.)
 
-const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8"];
+// Helper to calculate hospitalization days
+const calculateHospitalizationDays = (admission: string, dischargeOrPeriod: string | number): number | null => {
+    if (!dischargeOrPeriod) return null;
+
+    const valStr = String(dischargeOrPeriod);
+
+    // Case 1: It's a number (e.g. "14" or 14)
+    // We assume any number < 1000 is a day count, not a year/date
+    const numericVal = Number(valStr);
+    if (!isNaN(numericVal) && numericVal < 1000) {
+        return Math.floor(numericVal);
+    }
+
+    // Case 2: It looks like a date (e.g. "2025-03-03...")
+    // This happens if the spreadsheet formula =V-P returned a date (e.g. because P was empty/zero)
+    // In this case, we try to calculate the diff ourselves if we have a valid admission date.
+    const isDate = !isNaN(Date.parse(valStr)) && (valStr.includes("-") || valStr.includes("/"));
+
+    if (isDate && admission) {
+        const startDate = new Date(admission);
+        const endDate = new Date(valStr);
+
+        if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
+            const diffTime = endDate.getTime() - startDate.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            // Sanity check: 0 to 365 days
+            if (diffDays >= 0 && diffDays <= 365) {
+                return diffDays;
+            }
+        }
+    }
+
+    // Fallback: try parsing integer from string if it contains "days"
+    const parsed = parseInt(valStr.replace(/[^0-9]/g, ''));
+    return (!isNaN(parsed) && parsed < 1000) ? parsed : null;
+};
 
 export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
     const [filter, setFilter] = useState("");
@@ -95,8 +130,9 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
 
     // Calculate Average Hospitalization Period
     const hospitalizationDays = yearFilteredPatients
-        .map(p => parseInt(String(p.hospitalizationPeriod).replace(/[^0-9]/g, '')))
-        .filter(d => !isNaN(d));
+        .map(p => calculateHospitalizationDays(p.admissionDate, p.hospitalizationPeriod))
+        .filter((d): d is number => d !== null);
+
     const avgHospitalization = hospitalizationDays.length > 0
         ? Math.round(hospitalizationDays.reduce((a, b) => a + b, 0) / hospitalizationDays.length)
         : 0;
@@ -267,10 +303,8 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                     </td>
                                     <td className="px-6 py-4">{patient.admissionDate}</td>
                                     <td className="px-6 py-4">
-                                        {patient.hospitalizationPeriod
-                                            ? (String(patient.hospitalizationPeriod).match(/^\d+$/)
-                                                ? `${patient.hospitalizationPeriod} days`
-                                                : patient.hospitalizationPeriod)
+                                        {calculateHospitalizationDays(patient.admissionDate, patient.hospitalizationPeriod)
+                                            ? `${calculateHospitalizationDays(patient.admissionDate, patient.hospitalizationPeriod)} days`
                                             : "-"
                                         }
                                     </td>
