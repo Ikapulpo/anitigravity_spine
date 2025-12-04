@@ -47,11 +47,15 @@ const calculateHospitalizationDays = (admission: string, dischargeOrPeriod: stri
     }
 
     // Case 2: It looks like a date (e.g. "2025-03-03...")
+    // If admission is empty, it's an outpatient (or invalid), so return null (display "-")
+    if (!admission) return null;
+
+    // Case 3: It looks like a date AND admission exists
     // This happens if the spreadsheet formula =V-P returned a date (e.g. because P was empty/zero)
     // In this case, we try to calculate the diff ourselves if we have a valid admission date.
     const isDate = !isNaN(Date.parse(valStr)) && (valStr.includes("-") || valStr.includes("/"));
 
-    if (isDate && admission) {
+    if (isDate) {
         const startDate = new Date(admission);
         const endDate = new Date(valStr);
 
@@ -308,8 +312,7 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                         {(() => {
                                             const days = calculateHospitalizationDays(patient.admissionDate, patient.hospitalizationPeriod);
                                             if (days !== null) return `${days} days`;
-                                            // Fallback: show raw value if available, for debugging
-                                            return patient.hospitalizationPeriod ? String(patient.hospitalizationPeriod) : "-";
+                                            return "-";
                                         })()}
                                     </td>
                                     <td className="px-6 py-4">
