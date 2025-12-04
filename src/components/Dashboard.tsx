@@ -35,7 +35,7 @@ import { logout } from "@/app/actions/auth";
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8"];
 
 const calculateHospitalizationDays = (admission: string, dischargeOrPeriod: string | number): number | null => {
-    if (!dischargeOrPeriod) return null;
+    if (dischargeOrPeriod === null || dischargeOrPeriod === undefined || dischargeOrPeriod === "") return null;
 
     const valStr = String(dischargeOrPeriod);
 
@@ -312,6 +312,10 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                         {(() => {
                                             const days = calculateHospitalizationDays(patient.admissionDate, patient.hospitalizationPeriod);
                                             if (days !== null) return `${days} days`;
+                                            // Debug: If admission exists but calculation failed, show raw value
+                                            if (patient.admissionDate) {
+                                                return String(patient.hospitalizationPeriod);
+                                            }
                                             return "-";
                                         })()}
                                     </td>
