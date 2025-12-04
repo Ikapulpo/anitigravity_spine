@@ -34,7 +34,7 @@ import { logout } from "@/app/actions/auth";
 // Helper to calculate hospitalization days
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8"];
 
-const calculateHospitalizationDays = (admission: string, dischargeOrPeriod: string | number): number | null => {
+const calculateHospitalizationDays = (admission: string, dischargeOrPeriod: string | number, timestamp: string): number | null => {
     if (dischargeOrPeriod === null || dischargeOrPeriod === undefined || dischargeOrPeriod === "") return null;
 
     const valStr = String(dischargeOrPeriod);
@@ -46,50 +46,50 @@ const calculateHospitalizationDays = (admission: string, dischargeOrPeriod: stri
         return Math.floor(numericVal);
     }
 
-    // Case 2: It looks like a date (e.g. "2025-03-03...")
+    // Case 2: It looks like a date (e.g. "2025-03-03..." or "03-03")
     // If admission is empty, it's an outpatient (or invalid), so return null (display "-")
     if (!admission) return null;
 
     // Case 3: It looks like a date AND admission exists
-    // This happens if the spreadsheet formula =V-P returned a date (e.g. because P was empty/zero)
-    // In this case, we try to calculate the diff ourselves if we have a valid admission date.
-    const isDate = !isNaN(Date.parse(valStr)) && (valStr.includes("-") || valStr.includes("/"));
+    const isDate = !isNaN(Date.parse(valStr)) || valStr.includes("-") || valStr.includes("/");
 
     if (isDate) {
-        let startDate = new Date(admission);
-        const endDate = new Date(valStr);
-
-        // Handle partial admission date (e.g. "02-17") which defaults to 2001 or current year
-        // We infer the year from the discharge date (endDate)
-        if (!isNaN(endDate.getTime())) {
-            const dischargeYear = endDate.getFullYear();
-
-            // Check if admission is likely missing a year (e.g. year is 2001)
-            // Or if the string itself is short (e.g. "02-17")
-            const isPartialDate = admission.match(/^\d{1,2}[-/]\d{1,2}$/);
-
-            if (isPartialDate || startDate.getFullYear() < 2020) {
-                // Parse MM-DD manually to be safe
-                const parts = admission.split(/[-/]/);
-                if (parts.length >= 2) {
-                    const month = parseInt(parts[0]) - 1; // 0-indexed
-                    const day = parseInt(parts[1]);
-
-                    // Construct date with discharge year
-                    startDate = new Date(dischargeYear, month, day);
-
-                    // If admission > discharge (e.g. Adm: Dec 31, Dis: Jan 2), subtract 1 year from admission
-                    if (startDate > endDate) {
-                        startDate.setFullYear(dischargeYear - 1);
-                    }
-                }
+        // Extract year from timestamp (e.g. "2025/02/17 18:15:17")
+        let baseYear = new Date().getFullYear();
+        if (timestamp) {
+            const tsDate = new Date(timestamp);
+            if (!isNaN(tsDate.getFullYear())) {
+                baseYear = tsDate.getFullYear();
             }
         }
 
+        // Helper to parse "MM-DD" or "YYYY-MM-DD"
+        const parseDate = (dateStr: string, year: number): Date => {
+            // Check for MM-DD format (e.g. "02-17" or "2/17")
+            const mmDdMatch = dateStr.match(/^(\d{1,2})[-/](\d{1,2})$/);
+            if (mmDdMatch) {
+                const month = parseInt(mmDdMatch[1]) - 1; // 0-indexed
+                const day = parseInt(mmDdMatch[2]);
+                return new Date(year, month, day);
+            }
+            // Otherwise try standard parsing
+            return new Date(dateStr);
+        };
+
+        let startDate = parseDate(admission, baseYear);
+        let endDate = parseDate(valStr, baseYear);
+
+        // Handle year boundary: if Admission > Discharge (e.g. Adm: Dec, Dis: Jan), 
+        // and assuming timestamp is close to discharge/current, 
+        // then Admission was likely previous year.
         if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
+            if (startDate > endDate) {
+                startDate.setFullYear(baseYear - 1);
+            }
+
             const diffTime = endDate.getTime() - startDate.getTime();
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            // Ensure non-negative.
+
             if (diffDays >= 0) {
                 return diffDays;
             }
@@ -163,7 +163,7 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
 
     // Calculate Average Hospitalization Period
     const hospitalizationDays = yearFilteredPatients
-        .map(p => calculateHospitalizationDays(p.admissionDate, p.hospitalizationPeriod))
+        .map(p => calculateHospitalizationDays(p.admissionDate, p.hospitalizationPeriod, p.timestamp))
         .filter((d): d is number => d !== null);
 
     const avgHospitalization = hospitalizationDays.length > 0
@@ -337,7 +337,7 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                     <td className="px-6 py-4">{patient.admissionDate}</td>
                                     <td className="px-6 py-4">
                                         {(() => {
-                                            const days = calculateHospitalizationDays(patient.admissionDate, patient.hospitalizationPeriod);
+                                            const days = calculateHospitalizationDays(patient.admissionDate, patient.hospitalizationPeriod, patient.timestamp);
                                             if (days !== null) return `${days} days`;
                                             // Debug: If admission exists but calculation failed, show raw value AND admission date
                                             if (patient.admissionDate) {
