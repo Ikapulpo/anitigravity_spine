@@ -37,7 +37,7 @@ const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8"];
 const calculateHospitalizationDays = (admission: string, dischargeOrPeriod: string | number, timestamp: string): number | null => {
     if (dischargeOrPeriod === null || dischargeOrPeriod === undefined || dischargeOrPeriod === "") return null;
 
-    const valStr = String(dischargeOrPeriod);
+    const valStr = String(dischargeOrPeriod).trim();
 
     // Case 1: It's a number (e.g. "14" or 14)
     // We assume any number < 1000 is a day count, not a year/date
@@ -65,15 +65,21 @@ const calculateHospitalizationDays = (admission: string, dischargeOrPeriod: stri
 
         // Helper to parse "MM-DD" or "YYYY-MM-DD"
         const parseDate = (dateStr: string, year: number): Date => {
+            const cleanStr = String(dateStr).trim();
             // Check for MM-DD format (e.g. "02-17" or "2/17")
-            const mmDdMatch = dateStr.match(/^(\d{1,2})[-/](\d{1,2})$/);
+            const mmDdMatch = cleanStr.match(/^(\d{1,2})[-/](\d{1,2})$/);
             if (mmDdMatch) {
                 const month = parseInt(mmDdMatch[1]) - 1; // 0-indexed
                 const day = parseInt(mmDdMatch[2]);
                 return new Date(year, month, day);
             }
             // Otherwise try standard parsing
-            return new Date(dateStr);
+            const d = new Date(cleanStr);
+            // If year is 2001 (default for Chrome/v8 on Mac for "MM-DD"), update it
+            if (!isNaN(d.getTime()) && d.getFullYear() === 2001) {
+                d.setFullYear(year);
+            }
+            return d;
         };
 
         let startDate = parseDate(admission, baseYear);
@@ -341,7 +347,33 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                             if (days !== null) return `${days} days`;
                                             // Debug: If admission exists but calculation failed, show raw value AND admission date
                                             if (patient.admissionDate) {
-                                                return `${String(patient.hospitalizationPeriod)} (Adm: ${patient.admissionDate})`;
+                                                // Try to show why it failed
+                                                const valStr = String(patient.hospitalizationPeriod).trim();
+                                                let baseYear = new Date().getFullYear();
+                                                if (patient.timestamp) {
+                                                    const tsDate = new Date(patient.timestamp);
+                                                    if (!isNaN(tsDate.getFullYear())) baseYear = tsDate.getFullYear();
+                                                }
+                                                // Re-run parse logic for debug display
+                                                const parseDate = (dateStr: string, year: number) => {
+                                                    const cleanStr = String(dateStr).trim();
+                                                    const mmDdMatch = cleanStr.match(/^(\d{1,2})[-/](\d{1,2})$/);
+                                                    if (mmDdMatch) {
+                                                        const month = parseInt(mmDdMatch[1]) - 1;
+                                                        const day = parseInt(mmDdMatch[2]);
+                                                        return new Date(year, month, day);
+                                                    }
+                                                    const d = new Date(cleanStr);
+                                                    if (!isNaN(d.getTime()) && d.getFullYear() === 2001) d.setFullYear(year);
+                                                    return d;
+                                                };
+                                                const s = parseDate(patient.admissionDate, baseYear);
+                                                const e = parseDate(valStr, baseYear);
+                                                const diff = (!isNaN(s.getTime()) && !isNaN(e.getTime()))
+                                                    ? Math.ceil((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24))
+                                                    : "NaN";
+
+                                                return `${valStr} (Adm: ${patient.admissionDate}) -> Diff: ${diff}`;
                                             }
                                             return "-";
                                         })()}
