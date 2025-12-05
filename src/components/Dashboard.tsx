@@ -142,11 +142,12 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
 
     // Chart Data
     const outcomeData = yearFilteredPatients.reduce((acc: any[], curr) => {
-        const existing = acc.find((item) => item.name === curr.outcome);
+        const name = curr.outcome ? curr.outcome : "Unknown"; // Label empty as Unknown
+        const existing = acc.find((item) => item.name === name);
         if (existing) {
             existing.value++;
         } else {
-            acc.push({ name: curr.outcome, value: 1 });
+            acc.push({ name: name, value: 1 });
         }
         return acc;
     }, []);
@@ -179,6 +180,16 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
 
     const avgHospitalizationSurgery = surgeryHospitalizationDays.length > 0
         ? Math.round(surgeryHospitalizationDays.reduce((a, b) => a + b, 0) / surgeryHospitalizationDays.length)
+        : 0;
+
+    // Calculate Average Hospitalization Period (Conservative Only)
+    const conservativeHospitalizationDays = yearFilteredPatients
+        .filter(p => !p.outcome.includes("Surgery") && !p.outcome.includes("手術"))
+        .map(p => calculateHospitalizationDays(p.admissionDate, p.hospitalizationPeriod || p.followUpStatus, p.timestamp))
+        .filter((d): d is number => d !== null);
+
+    const avgHospitalizationConservative = conservativeHospitalizationDays.length > 0
+        ? Math.round(conservativeHospitalizationDays.reduce((a, b) => a + b, 0) / conservativeHospitalizationDays.length)
         : 0;
 
     // Calculate Average Post-op Days
@@ -253,14 +264,20 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
         String(p.newFractures).toLowerCase().includes(filter.toLowerCase())
     );
 
+    // Data for new comparison chart
+    const hospitalizationComparisonData = [
+        { name: "Surgery", value: avgHospitalizationSurgery, fill: "#ef4444" }, // Red
+        { name: "Conservative", value: avgHospitalizationConservative, fill: "#f59e0b" }, // Amber
+    ];
+
     return (
-        <div className="min-h-screen bg-gray-50 p-8 font-sans">
-            <header className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="min-h-screen bg-gray-50 p-4 md:p-8 font-sans">
+            <header className="mb-6 md:mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-900 tracking-tight">
+                    <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">
                         Spinal OVF Consult Dashboard
                     </h1>
-                    <p className="text-gray-500 mt-2">Overview of patient consults and surgical status</p>
+                    <p className="text-sm md:text-base text-gray-500 mt-2">Overview of patient consults and surgical status</p>
                 </div>
                 <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-gray-700">Year:</span>
@@ -284,7 +301,7 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
             </header>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 mb-8">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center">
                     <div className="p-3 rounded-full bg-blue-100 text-blue-600 mr-4">
                         <Users size={24} />
@@ -326,6 +343,16 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                 </div>
 
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center">
+                    <div className="p-3 rounded-full bg-teal-100 text-teal-600 mr-4">
+                        <Activity size={24} />
+                    </div>
+                    <div>
+                        <p className="text-sm text-gray-500 font-medium">Avg. Total Stay (Conservative)</p>
+                        <h3 className="text-2xl font-bold text-gray-900">{avgHospitalizationConservative} days</h3>
+                    </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center">
                     <div className="p-3 rounded-full bg-indigo-100 text-indigo-600 mr-4">
                         <Activity size={24} />
                     </div>
@@ -347,9 +374,9 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
             </div>
 
             {/* Charts Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Outcome Distribution</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Treatment Distribution</h3>
                     <div className="h-64">
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
@@ -403,6 +430,25 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                         </ResponsiveContainer>
                     </div>
                 </div>
+
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Hospitalization: Surgery vs Conservative</h3>
+                    <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={hospitalizationComparisonData}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                <XAxis dataKey="name" />
+                                <YAxis allowDecimals={false} />
+                                <Tooltip cursor={{ fill: 'transparent' }} />
+                                <Bar dataKey="value" radius={[4, 4, 0, 0]} name="Days">
+                                    {hospitalizationComparisonData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                                    ))}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
             </div>
 
             {/* Patient Table */}
@@ -425,30 +471,30 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                     <table className="w-full text-left text-sm text-gray-600">
                         <thead className="bg-gray-50 text-xs uppercase font-semibold text-gray-500">
                             <tr>
-                                <th className="px-6 py-4">ID</th>
-                                <th className="px-6 py-4">Age / Gender</th>
-                                <th className="px-6 py-4">Fracture Level</th>
-                                <th className="px-6 py-4">Admission Date</th>
-                                <th className="px-6 py-4">Hospitalization</th>
-                                <th className="px-6 py-4">Procedure</th>
-                                <th className="px-6 py-4">Post-op Days</th>
-                                <th className="px-6 py-4">MRI</th>
-                                <th className="px-6 py-4">Outcome</th>
-                                <th className="px-6 py-4">Status</th>
+                                <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">ID</th>
+                                <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Age / Gender</th>
+                                <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Fracture Level</th>
+                                <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Admission Date</th>
+                                <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Hospitalization</th>
+                                <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Procedure</th>
+                                <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Post-op Days</th>
+                                <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">MRI</th>
+                                <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Outcome</th>
+                                <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">OF Classification</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {filteredPatients.map((patient) => (
                                 <tr key={patient.id} className="hover:bg-gray-50 transition-colors">
-                                    <td className="px-6 py-4 font-medium text-gray-900">{patient.id}</td>
-                                    <td className="px-6 py-4">{patient.age} / {patient.gender}</td>
-                                    <td className="px-6 py-4">
+                                    <td className="px-3 py-3 md:px-6 md:py-4 font-medium text-gray-900 whitespace-nowrap">{patient.id}</td>
+                                    <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">{patient.age} / {patient.gender}</td>
+                                    <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">
                                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                                             {patient.newFractures || "-"}
                                         </span>
                                     </td>
-                                    <td className="px-6 py-4">{patient.admissionDate}</td>
-                                    <td className="px-6 py-4">
+                                    <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">{patient.admissionDate}</td>
+                                    <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">
                                         {(() => {
                                             // Fallback to followUpStatus if hospitalizationPeriod is empty/invalid but followUpStatus looks like the data
                                             const sourceVal = patient.hospitalizationPeriod || patient.followUpStatus;
@@ -462,10 +508,10 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                             return "-";
                                         })()}
                                     </td>
-                                    <td className="px-6 py-4">
+                                    <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">
                                         {patient.procedure || "-"}
                                     </td>
-                                    <td className="px-6 py-4">
+                                    <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">
                                         {(() => {
                                             // Only show for surgery patients
                                             if (!patient.outcome.includes("Surgery") && !patient.outcome.includes("手術")) return "-";
@@ -495,7 +541,7 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                             return "-";
                                         })()}
                                     </td>
-                                    <td className="px-6 py-4">
+                                    <td className="px-3 py-3 md:px-6 md:py-4 min-w-[120px]">
                                         {patient.mriImage ? (
                                             <div className="flex flex-col gap-1">
                                                 {patient.mriImage.split(/[,、\s]+/).filter(url => url.trim().startsWith('http')).map((url, index) => (
@@ -515,7 +561,7 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                             <span className="text-gray-400">-</span>
                                         )}
                                     </td>
-                                    <td className="px-6 py-4">
+                                    <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">
                                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${patient.outcome.includes("Surgery") || patient.outcome.includes("手術")
                                             ? "bg-red-100 text-red-800"
                                             : "bg-green-100 text-green-800"
@@ -523,9 +569,8 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                             {patient.outcome}
                                         </span>
                                     </td>
-                                    <td className="px-6 py-4 text-gray-500">
-                                        {/* Hide status if it looks like a number (mis-mapped hospitalization days) */}
-                                        {/^\d+$/.test(String(patient.followUpStatus).trim()) ? "-" : patient.followUpStatus}
+                                    <td className="px-3 py-3 md:px-6 md:py-4 text-gray-500 whitespace-nowrap">
+                                        {patient.ofClassification || "-"}
                                     </td>
                                 </tr>
                             ))}
