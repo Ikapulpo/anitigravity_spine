@@ -171,13 +171,14 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
         return acc;
     }, []).sort((a: any, b: any) => a.name.localeCompare(b.name));
 
-    // Calculate Average Hospitalization Period
-    const hospitalizationDays = yearFilteredPatients
+    // Calculate Average Hospitalization Period (Surgery Only)
+    const surgeryHospitalizationDays = yearFilteredPatients
+        .filter(p => p.outcome.includes("Surgery") || p.outcome.includes("手術"))
         .map(p => calculateHospitalizationDays(p.admissionDate, p.hospitalizationPeriod || p.followUpStatus, p.timestamp))
         .filter((d): d is number => d !== null);
 
-    const avgHospitalization = hospitalizationDays.length > 0
-        ? Math.round(hospitalizationDays.reduce((a, b) => a + b, 0) / hospitalizationDays.length)
+    const avgHospitalizationSurgery = surgeryHospitalizationDays.length > 0
+        ? Math.round(surgeryHospitalizationDays.reduce((a, b) => a + b, 0) / surgeryHospitalizationDays.length)
         : 0;
 
     // Calculate Average Post-op Days
@@ -218,7 +219,7 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                 days = calculateHospitalizationDays(curr.surgeryDate, dischargeVal, curr.timestamp);
             }
 
-            if (days !== null) {
+            if (days !== null && days >= 0) {
                 const existing = acc.find((item) => item.name === curr.procedure);
                 if (existing) {
                     existing.totalDays += days;
@@ -231,6 +232,19 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
             return acc;
         }, [])
         .sort((a: any, b: any) => b.value - a.value);
+
+    // Calculate Average Time-to-Surgery (Injury Date to Surgery Date)
+    const timeToSurgeryList = yearFilteredPatients
+        .filter(p => p.outcome.includes("Surgery") || p.outcome.includes("手術"))
+        .map(p => {
+            const days = calculateHospitalizationDays(p.injuryDate, p.surgeryDate, p.timestamp);
+            return days;
+        })
+        .filter((d): d is number => d !== null && d >= 0);
+
+    const avgTimeToSurgery = timeToSurgeryList.length > 0
+        ? Math.round(timeToSurgeryList.reduce((a, b) => a + b, 0) / timeToSurgeryList.length)
+        : 0;
 
     const filteredPatients = yearFilteredPatients.filter((p) =>
         String(p.id).toLowerCase().includes(filter.toLowerCase()) ||
@@ -270,7 +284,7 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
             </header>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center">
                     <div className="p-3 rounded-full bg-blue-100 text-blue-600 mr-4">
                         <Users size={24} />
@@ -306,8 +320,8 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                         <Activity size={24} />
                     </div>
                     <div>
-                        <p className="text-sm text-gray-500 font-medium">Avg. Hospitalization</p>
-                        <h3 className="text-2xl font-bold text-gray-900">{avgHospitalization} days</h3>
+                        <p className="text-sm text-gray-500 font-medium">Avg. Total Stay (Surgery)</p>
+                        <h3 className="text-2xl font-bold text-gray-900">{avgHospitalizationSurgery} days</h3>
                     </div>
                 </div>
 
@@ -318,6 +332,16 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                     <div>
                         <p className="text-sm text-gray-500 font-medium">Avg. Post-op Days</p>
                         <h3 className="text-2xl font-bold text-gray-900">{avgPostOpDays} days</h3>
+                    </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center">
+                    <div className="p-3 rounded-full bg-purple-100 text-purple-600 mr-4">
+                        <Clock size={24} />
+                    </div>
+                    <div>
+                        <p className="text-sm text-gray-500 font-medium">Avg. Time-to-Surgery</p>
+                        <h3 className="text-2xl font-bold text-gray-900">{avgTimeToSurgery} days</h3>
                     </div>
                 </div>
             </div>
