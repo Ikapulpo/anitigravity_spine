@@ -6,7 +6,7 @@ export interface PatientRecord {
   injuryDate: string;
   fallHistory: string;
   preInjuryADL: string;
-  fractureLevel: string;
+  // fractureLevel: string; // Removed
   neuroSymptoms: string;
   ofClassification: string;
   mriImage: string;
@@ -22,6 +22,9 @@ export interface PatientRecord {
   surgeryDate: string;
   dischargeDate: string;
   hospitalizationPeriod: string;
+  height?: string | number;
+  weight?: string | number;
+  bmi?: string | number;
   dischargeDestination: string;
   followUpStatus: string;
 }

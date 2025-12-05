@@ -260,7 +260,6 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
     const filteredPatients = yearFilteredPatients.filter((p) =>
         String(p.id).toLowerCase().includes(filter.toLowerCase()) ||
         String(p.outcome).toLowerCase().includes(filter.toLowerCase()) ||
-        String(p.fractureLevel).toLowerCase().includes(filter.toLowerCase()) ||
         String(p.newFractures).toLowerCase().includes(filter.toLowerCase())
     );
 

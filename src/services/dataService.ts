@@ -9,7 +9,6 @@ const MOCK_PATIENTS: PatientRecord[] = [
         injuryDate: "2023/09/25",
         fallHistory: "Yes",
         preInjuryADL: "Independent",
-        fractureLevel: "L1",
         neuroSymptoms: "None",
         ofClassification: "Type 3",
         mriImage: "High intensity at L1",
@@ -36,7 +35,6 @@ const MOCK_PATIENTS: PatientRecord[] = [
         injuryDate: "2023/10/03",
         fallHistory: "No",
         preInjuryADL: "Assisted",
-        fractureLevel: "T12",
         neuroSymptoms: "Radiculopathy",
         ofClassification: "Type 4",
         mriImage: "T12 collapse",
@@ -63,7 +61,6 @@ const MOCK_PATIENTS: PatientRecord[] = [
         injuryDate: "2023/10/08",
         fallHistory: "Yes",
         preInjuryADL: "Wheelchair",
-        fractureLevel: "L3",
         neuroSymptoms: "None",
         ofClassification: "Type 2",
         mriImage: "L3 edema",
@@ -90,7 +87,6 @@ const MOCK_PATIENTS: PatientRecord[] = [
         injuryDate: "2023/10/10",
         fallHistory: "Yes",
         preInjuryADL: "Independent",
-        fractureLevel: "T11",
         neuroSymptoms: "None",
         ofClassification: "Type 3",
         mriImage: "T11 fresh fracture",
@@ -112,7 +108,7 @@ const MOCK_PATIENTS: PatientRecord[] = [
 ];
 
 export const fetchPatients = async (): Promise<PatientRecord[]> => {
-    const apiUrl = process.env.NEXT_PUBLIC_GAS_API_URL;
+    const apiUrl = process.env.NEXT_PUBLIC_GAS_API_URL || "https://script.google.com/macros/s/AKfycbwjm1j0OjPlR9nys30HicuO76yoevOeSY7_Xmyi30_tMVxYP9_Nei3TpOdTOoICUHKH/exec";
 
     if (!apiUrl) {
         console.warn("NEXT_PUBLIC_GAS_API_URL is not set. Using mock data.");
