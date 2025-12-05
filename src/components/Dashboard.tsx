@@ -170,7 +170,16 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
             }
         });
         return acc;
-    }, []).sort((a: any, b: any) => a.name.localeCompare(b.name));
+    }, []).sort((a: any, b: any) => {
+        const getLevelVal = (name: string) => {
+            const n = name.toUpperCase();
+            if (n.startsWith("T")) return 100 + (parseInt(n.substring(1)) || 0); // T1-T12 -> 101-112
+            if (n.startsWith("L")) return 200 + (parseInt(n.substring(1)) || 0); // L1-L5 -> 201-205
+            if (n === "UNKNOWN") return 999;
+            return 300; // Others
+        };
+        return getLevelVal(a.name) - getLevelVal(b.name);
+    });
 
     // Calculate Average Hospitalization Period (Surgery Only)
     const surgeryHospitalizationDays = yearFilteredPatients
