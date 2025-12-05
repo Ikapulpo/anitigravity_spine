@@ -472,7 +472,6 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                             <tr>
                                 <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">ID</th>
                                 <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Age / Gender</th>
-                                <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Fracture Level</th>
                                 <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Admission Date</th>
                                 <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Hospitalization</th>
                                 <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Procedure</th>
@@ -487,25 +486,17 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                 <tr key={patient.id} className="hover:bg-gray-50 transition-colors">
                                     <td className="px-3 py-3 md:px-6 md:py-4 font-medium text-gray-900 whitespace-nowrap">{patient.id}</td>
                                     <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">{patient.age} / {patient.gender}</td>
-                                    <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">
-                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                            {patient.newFractures || "-"}
-                                        </span>
-                                    </td>
                                     <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">{patient.admissionDate}</td>
                                     <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">
-                                        {(() => {
-                                            // Fallback to followUpStatus if hospitalizationPeriod is empty/invalid but followUpStatus looks like the data
-                                            const sourceVal = patient.hospitalizationPeriod || patient.followUpStatus;
-                                            const days = calculateHospitalizationDays(patient.admissionDate, sourceVal, patient.timestamp);
-
-                                            if (days !== null) return `${days} days`;
-                                            // Debug: If admission exists but calculation failed, show raw value AND admission date
-                                            if (patient.admissionDate) {
-                                                return `${String(sourceVal || "")} (Adm: ${patient.admissionDate})`;
-                                            }
-                                            return "-";
-                                        })()}
+                                        {patient.hospitalizationPeriod ? (
+                                            /\d/.test(String(patient.hospitalizationPeriod)) ?
+                                                // If it has a number, chances are it's days. If just a number "14", add " days".
+                                                // If string "14 days", just show it.
+                                                (String(patient.hospitalizationPeriod).includes("day") || String(patient.hospitalizationPeriod).includes("日")
+                                                    ? patient.hospitalizationPeriod
+                                                    : `${patient.hospitalizationPeriod} days`)
+                                                : patient.hospitalizationPeriod
+                                        ) : "-"}
                                     </td>
                                     <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">
                                         {patient.procedure || "-"}
