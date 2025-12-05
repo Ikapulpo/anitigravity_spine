@@ -108,7 +108,7 @@ const MOCK_PATIENTS: PatientRecord[] = [
 ];
 
 export const fetchPatients = async (): Promise<PatientRecord[]> => {
-    const apiUrl = process.env.NEXT_PUBLIC_GAS_API_URL || "https://script.google.com/macros/s/AKfycbwjm1j0OjPlR9nys30HicuO76yoevOeSY7_Xmyi30_tMVxYP9_Nei3TpOdTOoICUHKH/exec";
+    const apiUrl = process.env.NEXT_PUBLIC_GAS_API_URL || "https://script.google.com/macros/s/AKfycbyQT9aLtRMWsMXR4iAHnH1cw4CSt6eFd61TzC-PcDcHog_d8F6otsbfc6zp_vpXDXYo/exec";
 
     if (!apiUrl) {
         console.warn("NEXT_PUBLIC_GAS_API_URL is not set. Using mock data.");
