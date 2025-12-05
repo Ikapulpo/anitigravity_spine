@@ -123,7 +123,40 @@ export const fetchPatients = async (): Promise<PatientRecord[]> => {
             throw new Error(`Failed to fetch data: ${response.statusText}`);
         }
         const data = await response.json();
-        return data;
+
+        // Defensive: Sanitize data to ensure it matches the PatientRecord interface
+        // This prevents crashes if GAS returns numbers/nulls where strings are expected (e.g. after column shifts)
+        const sanitizedData: PatientRecord[] = Array.isArray(data) ? data.map((item: any) => ({
+            timestamp: String(item.timestamp || ""),
+            id: String(item.id || ""),
+            gender: String(item.gender || ""),
+            age: Number(item.age) || 0,
+            injuryDate: String(item.injuryDate || ""),
+            fallHistory: String(item.fallHistory || ""),
+            preInjuryADL: String(item.preInjuryADL || ""),
+            neuroSymptoms: String(item.neuroSymptoms || ""),
+            ofClassification: String(item.ofClassification || ""),
+            mriImage: String(item.mriImage || ""),
+            medicalHistory: String(item.medicalHistory || ""),
+            osteoporosisHistory: String(item.osteoporosisHistory || ""),
+            remarks: String(item.remarks || ""),
+            currentPain: String(item.currentPain || ""),
+            admissionDate: String(item.admissionDate || ""),
+            newFractures: String(item.newFractures || ""),
+            timeToAdmission: String(item.timeToAdmission || ""),
+            outcome: String(item.outcome || ""),
+            procedure: String(item.procedure || ""),
+            surgeryDate: String(item.surgeryDate || ""),
+            dischargeDate: String(item.dischargeDate || ""),
+            hospitalizationPeriod: String(item.hospitalizationPeriod || ""),
+            height: item.height, // Keep optional/number as is
+            weight: item.weight,
+            bmi: item.bmi,
+            dischargeDestination: String(item.dischargeDestination || ""),
+            followUpStatus: String(item.followUpStatus || ""),
+        })) : [];
+
+        return sanitizedData;
     } catch (error) {
         console.error("Error fetching patient data:", error);
         return MOCK_PATIENTS; // Fallback to mock data on error
