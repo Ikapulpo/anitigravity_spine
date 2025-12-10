@@ -278,6 +278,70 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
         { name: "Conservative", value: avgHospitalizationConservative, fill: "#f59e0b" }, // Amber
     ];
 
+    // Age Group Data Processing
+    const ageGroups = ["<60", "60-69", "70-79", "80-89", "90+"];
+
+    const ageDataMap = ageGroups.reduce((acc, group) => {
+        acc[group] = {
+            count: 0,
+            surgeryDays: 0,
+            surgeryCount: 0,
+            conservativeDays: 0,
+            conservativeCount: 0
+        };
+        return acc;
+    }, {} as Record<string, { count: number; surgeryDays: number; surgeryCount: number; conservativeDays: number; conservativeCount: number }>);
+
+    yearFilteredPatients.forEach(p => {
+        const age = p.age;
+        let group = "";
+        if (age < 60) group = "<60";
+        else if (age < 70) group = "60-69";
+        else if (age < 80) group = "70-79";
+        else if (age < 90) group = "80-89";
+        else group = "90+";
+
+        if (ageDataMap[group]) {
+            // Case Count
+            ageDataMap[group].count++;
+
+            // Hospitalization Days
+            const isSurgery = p.outcome.includes("Surgery") || p.outcome.includes("手術");
+            // Use admissionDate for start. For discharge, try hospitalizationPeriod (often just a number days) or followUpStatus
+            // Reuse logic from calculateHospitalizationDays which handles "14" (days) or "2023-10-xx" (date)
+            const days = calculateHospitalizationDays(
+                p.admissionDate,
+                p.hospitalizationPeriod || p.followUpStatus,
+                p.timestamp
+            );
+
+            if (days !== null && days >= 0) {
+                if (isSurgery) {
+                    ageDataMap[group].surgeryDays += days;
+                    ageDataMap[group].surgeryCount++;
+                } else {
+                    ageDataMap[group].conservativeDays += days;
+                    ageDataMap[group].conservativeCount++;
+                }
+            }
+        }
+    });
+
+    const ageDistributionData = ageGroups.map(group => ({
+        name: group,
+        value: ageDataMap[group].count
+    }));
+
+    const ageHospitalizationData = ageGroups.map(group => ({
+        name: group,
+        Surgery: ageDataMap[group].surgeryCount > 0
+            ? Math.round(ageDataMap[group].surgeryDays / ageDataMap[group].surgeryCount)
+            : 0,
+        Conservative: ageDataMap[group].conservativeCount > 0
+            ? Math.round(ageDataMap[group].conservativeDays / ageDataMap[group].conservativeCount)
+            : 0
+    }));
+
     return (
         <div className="min-h-screen bg-gray-50 p-4 md:p-8 font-sans">
             <header className="mb-6 md:mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -453,6 +517,38 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                         <Cell key={`cell-${index}`} fill={entry.fill} />
                                     ))}
                                 </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Case Count by Age Group</h3>
+                    <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={ageDistributionData}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                <XAxis dataKey="name" />
+                                <YAxis allowDecimals={false} />
+                                <Tooltip cursor={{ fill: 'transparent' }} />
+                                <Bar dataKey="value" fill="#8b5cf6" radius={[4, 4, 0, 0]} name="Patients" />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Avg Total Stay by Age Group</h3>
+                    <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={ageHospitalizationData}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                <XAxis dataKey="name" />
+                                <YAxis allowDecimals={false} />
+                                <Tooltip cursor={{ fill: 'transparent' }} />
+                                <Legend />
+                                <Bar dataKey="Surgery" fill="#ef4444" radius={[4, 4, 0, 0]} name="Surgery (Days)" />
+                                <Bar dataKey="Conservative" fill="#f59e0b" radius={[4, 4, 0, 0]} name="Conservative (Days)" />
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
