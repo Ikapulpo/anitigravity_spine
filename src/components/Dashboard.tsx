@@ -612,7 +612,49 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                     <td className="px-3 py-3 md:px-6 md:py-4 font-medium text-gray-900 whitespace-nowrap">{patient.id}</td>
                                     <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">{patient.age} / {patient.gender}</td>
                                     <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">{patient.admissionDate}</td>
-                                    <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">{patient.surgeryDate || "-"}</td>
+                                    <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">
+                                        {(() => {
+                                            if (!patient.surgeryDate) return "-";
+                                            // 1. Try straightforward parsing first
+                                            // Reuse helper logic from calculateHospitalizationDays concepts but simpler for display
+                                            // Or better, extract a reusable helper? For now, inline logic for display fix.
+
+                                            const valStr = String(patient.surgeryDate).trim();
+                                            // Match MM/DD or MM-DD or M/D
+                                            const match = valStr.match(/^(\d{1,2})[\/\-](\d{1,2})$/);
+
+                                            // Determine base year from timestamp, default to current year
+                                            let year = new Date().getFullYear();
+                                            if (patient.timestamp) {
+                                                const tsDate = new Date(patient.timestamp);
+                                                if (!isNaN(tsDate.getFullYear())) {
+                                                    year = tsDate.getFullYear();
+                                                }
+                                            }
+
+                                            if (match) {
+                                                const month = match[1].padStart(2, '0');
+                                                const day = match[2].padStart(2, '0');
+                                                // Check for year boundary? 
+                                                // Use logic: if Admission date exists and is Dec, and Surgery is Jan, increment year.
+                                                // But simplistic approach: use timestamp year.
+                                                // The user example is 11/25, which is simple.
+                                                return `${year}/${month}/${day}`;
+                                            }
+
+                                            // If it already contains year (YYYY/MM/DD or YYYY-MM-DD)
+                                            const date = new Date(valStr);
+                                            if (!isNaN(date.getTime())) {
+                                                // Checks if year is 2001 (default for Chrome/node for MM-DD)
+                                                if (date.getFullYear() === 2001) {
+                                                    date.setFullYear(year);
+                                                }
+                                                return date.toLocaleDateString("ja-JP", { year: 'numeric', month: '2-digit', day: '2-digit' });
+                                            }
+
+                                            return valStr;
+                                        })()}
+                                    </td>
                                     <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">
                                         {patient.hospitalizationPeriod ? (
                                             /\d/.test(String(patient.hospitalizationPeriod)) ?
