@@ -597,6 +597,7 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                 <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">ID</th>
                                 <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Age / Gender</th>
                                 <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Admission Date</th>
+                                <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Surgery Date</th>
                                 <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Hospitalization</th>
                                 <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Procedure</th>
                                 <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Post-op Days</th>
@@ -611,6 +612,7 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                     <td className="px-3 py-3 md:px-6 md:py-4 font-medium text-gray-900 whitespace-nowrap">{patient.id}</td>
                                     <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">{patient.age} / {patient.gender}</td>
                                     <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">{patient.admissionDate}</td>
+                                    <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">{patient.surgeryDate || "-"}</td>
                                     <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">
                                         {patient.hospitalizationPeriod ? (
                                             /\d/.test(String(patient.hospitalizationPeriod)) ?
