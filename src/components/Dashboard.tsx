@@ -611,7 +611,7 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                 <tr key={patient.id} className="hover:bg-gray-50 transition-colors">
                                     <td className="px-3 py-3 md:px-6 md:py-4 font-medium text-gray-900 whitespace-nowrap">{patient.id}</td>
                                     <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">{patient.age} / {patient.gender}</td>
-                                    <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">{patient.admissionDate}</td>
+                                    <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">{patient.admissionDate || "outpatient"}</td>
                                     <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">
                                         {(() => {
                                             if (!patient.surgeryDate) return "-";
