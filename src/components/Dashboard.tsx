@@ -284,13 +284,23 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
     const ageDataMap = ageGroups.reduce((acc, group) => {
         acc[group] = {
             count: 0,
+            surgeryCases: 0,
+            otherCases: 0,
             surgeryDays: 0,
             surgeryCount: 0,
             conservativeDays: 0,
             conservativeCount: 0
         };
         return acc;
-    }, {} as Record<string, { count: number; surgeryDays: number; surgeryCount: number; conservativeDays: number; conservativeCount: number }>);
+    }, {} as Record<string, {
+        count: number;
+        surgeryCases: number;
+        otherCases: number;
+        surgeryDays: number;
+        surgeryCount: number;
+        conservativeDays: number;
+        conservativeCount: number
+    }>);
 
     yearFilteredPatients.forEach(p => {
         const age = p.age;
@@ -304,9 +314,15 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
         if (ageDataMap[group]) {
             // Case Count
             ageDataMap[group].count++;
+            const isSurgery = p.outcome.includes("Surgery") || p.outcome.includes("手術");
+
+            if (isSurgery) {
+                ageDataMap[group].surgeryCases++;
+            } else {
+                ageDataMap[group].otherCases++;
+            }
 
             // Hospitalization Days
-            const isSurgery = p.outcome.includes("Surgery") || p.outcome.includes("手術");
             // Use admissionDate for start. For discharge, try hospitalizationPeriod (often just a number days) or followUpStatus
             // Reuse logic from calculateHospitalizationDays which handles "14" (days) or "2023-10-xx" (date)
             const days = calculateHospitalizationDays(
@@ -329,7 +345,8 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
 
     const ageDistributionData = ageGroups.map(group => ({
         name: group,
-        value: ageDataMap[group].count
+        Surgery: ageDataMap[group].surgeryCases,
+        Others: ageDataMap[group].otherCases
     }));
 
     const ageHospitalizationData = ageGroups.map(group => ({
@@ -531,7 +548,9 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                 <XAxis dataKey="name" />
                                 <YAxis allowDecimals={false} />
                                 <Tooltip cursor={{ fill: 'transparent' }} />
-                                <Bar dataKey="value" fill="#8b5cf6" radius={[4, 4, 0, 0]} name="Patients" />
+                                <Legend />
+                                <Bar dataKey="Surgery" stackId="a" fill="#ef4444" radius={[0, 0, 4, 4]} name="Surgery" />
+                                <Bar dataKey="Others" stackId="a" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Others" />
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
