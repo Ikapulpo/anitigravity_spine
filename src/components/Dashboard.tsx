@@ -34,16 +34,97 @@ import { logout } from "@/app/actions/auth";
 // Helper to calculate hospitalization days
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8"];
 
-const calculateHospitalizationDays = (admission: string, dischargeOrPeriod: string | number, timestamp: string): number | null => {
+// Helper to parse "MM-DD" or "YYYY-MM-DD" flexibly
+const parseFlexibleDate = (dateStr: string, fallbackYear: number): Date | null => {
+    const cleanStr = String(dateStr).trim();
+    if (!cleanStr) return null;
+
+    // Check for MM-DD format (e.g. "02-17" or "2/17")
+    const mmDdMatch = cleanStr.match(/^(\d{1,2})[^\d](\d{1,2})$/);
+    if (mmDdMatch) {
+        const month = parseInt(mmDdMatch[1]) - 1; // 0-indexed
+        const day = parseInt(mmDdMatch[2]);
+        return new Date(fallbackYear, month, day);
+    }
+
+    // Otherwise try standard parsing
+    const d = new Date(cleanStr);
+    if (!isNaN(d.getTime())) {
+        // If year is 2001 (default for Chrome/v8 on Mac for "MM-DD"), update it
+        if (d.getFullYear() === 2001) {
+            d.setFullYear(fallbackYear);
+        }
+        return d;
+    }
+
+    return null;
+};
+
+// Extract base year from timestamp
+const extractBaseYear = (timestamp: string): number => {
+    let baseYear = new Date().getFullYear();
+    if (timestamp) {
+        const tsDate = new Date(timestamp);
+        if (!isNaN(tsDate.getFullYear())) {
+            baseYear = tsDate.getFullYear();
+        }
+    }
+    return baseYear;
+};
+
+// Calculate hospitalization days from admission and discharge dates directly
+const calculateFromDates = (admissionStr: string, dischargeStr: string, timestamp: string): number | null => {
+    if (!admissionStr || !dischargeStr) return null;
+
+    const baseYear = extractBaseYear(timestamp);
+    const startDate = parseFlexibleDate(admissionStr, baseYear);
+    const endDate = parseFlexibleDate(dischargeStr, baseYear);
+
+    if (!startDate || !endDate) return null;
+
+    // Year boundary handling: if admission > discharge, assume year boundary crossing
+    // (e.g., admission in December, discharge in January)
+    if (startDate > endDate) {
+        startDate.setFullYear(baseYear - 1);
+    }
+
+    const diffTime = endDate.getTime() - startDate.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    return diffDays >= 0 ? diffDays : null;
+};
+
+const calculateHospitalizationDays = (
+    admission: string,
+    dischargeOrPeriod: string | number,
+    timestamp: string,
+    dischargeDate?: string  // Optional: explicit discharge date for fallback calculation
+): number | null => {
     if (dischargeOrPeriod === null || dischargeOrPeriod === undefined || dischargeOrPeriod === "") return null;
 
     const valStr = String(dischargeOrPeriod).trim();
 
-    // Case 1: It's a number (e.g. "14" or 14)
-    // We assume any number < 1000 is a day count, not a year/date
+    // Case 1: It's a number (e.g. "14" or 14 or -350)
+    // We assume any number with absolute value < 1000 is a day count, not a year/date
     const numericVal = Number(valStr);
-    if (!isNaN(numericVal) && numericVal < 1000) {
-        return Math.floor(numericVal);
+    if (!isNaN(numericVal) && Math.abs(numericVal) < 1000) {
+        // If positive, return as-is
+        if (numericVal >= 0) {
+            return Math.floor(numericVal);
+        }
+
+        // If negative, attempt to recalculate from admission and discharge dates
+        // This handles the case where Google Sheets calculation returned a negative value
+        // due to year boundary issues (e.g., admission 12/25, discharge 1/10)
+        if (admission && dischargeDate) {
+            const recalculated = calculateFromDates(admission, dischargeDate, timestamp);
+            if (recalculated !== null) {
+                return recalculated;
+            }
+        }
+
+        // If we can't recalculate, return null rather than the negative value
+        return null;
     }
 
     // Case 2: It looks like a date (e.g. "2025-03-03..." or "03-03")
@@ -57,42 +138,15 @@ const calculateHospitalizationDays = (admission: string, dischargeOrPeriod: stri
     const isDate = !isNaN(Date.parse(valStr)) || valStr.includes("-") || valStr.includes("/");
 
     if (isDate) {
-        // Extract year from timestamp (e.g. "2025/02/17 18:15:17")
-        let baseYear = new Date().getFullYear();
-        if (timestamp) {
-            const tsDate = new Date(timestamp);
-            if (!isNaN(tsDate.getFullYear())) {
-                baseYear = tsDate.getFullYear();
-            }
-        }
+        const baseYear = extractBaseYear(timestamp);
 
-        // Helper to parse "MM-DD" or "YYYY-MM-DD"
-        const parseDate = (dateStr: string, year: number): Date => {
-            const cleanStr = String(dateStr).trim();
-            // Check for MM-DD format (e.g. "02-17" or "2/17")
-            // Broaden regex to allow any non-digit separator
-            const mmDdMatch = cleanStr.match(/^(\d{1,2})[^\d](\d{1,2})$/);
-            if (mmDdMatch) {
-                const month = parseInt(mmDdMatch[1]) - 1; // 0-indexed
-                const day = parseInt(mmDdMatch[2]);
-                return new Date(year, month, day);
-            }
-            // Otherwise try standard parsing
-            const d = new Date(cleanStr);
-            // If year is 2001 (default for Chrome/v8 on Mac for "MM-DD"), update it
-            if (!isNaN(d.getTime()) && d.getFullYear() === 2001) {
-                d.setFullYear(year);
-            }
-            return d;
-        };
+        let startDate = parseFlexibleDate(admission, baseYear);
+        let endDate = parseFlexibleDate(valStr, baseYear);
 
-        let startDate = parseDate(admission, baseYear);
-        let endDate = parseDate(valStr, baseYear);
-
-        // Handle year boundary: if Admission > Discharge (e.g. Adm: Dec, Dis: Jan), 
-        // and assuming timestamp is close to discharge/current, 
+        // Handle year boundary: if Admission > Discharge (e.g. Adm: Dec, Dis: Jan),
+        // and assuming timestamp is close to discharge/current,
         // then Admission was likely previous year.
-        if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
+        if (startDate && endDate) {
             if (startDate > endDate) {
                 startDate.setFullYear(baseYear - 1);
             }
@@ -184,7 +238,7 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
     // Calculate Average Hospitalization Period (Surgery Only)
     const surgeryHospitalizationDays = yearFilteredPatients
         .filter(p => p.outcome.includes("Surgery") || p.outcome.includes("手術"))
-        .map(p => calculateHospitalizationDays(p.admissionDate, p.hospitalizationPeriod || p.followUpStatus, p.timestamp))
+        .map(p => calculateHospitalizationDays(p.admissionDate, p.hospitalizationPeriod || p.followUpStatus, p.timestamp, p.dischargeDate))
         .filter((d): d is number => d !== null);
 
     const avgHospitalizationSurgery = surgeryHospitalizationDays.length > 0
@@ -194,7 +248,7 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
     // Calculate Average Hospitalization Period (Conservative Only)
     const conservativeHospitalizationDays = yearFilteredPatients
         .filter(p => !p.outcome.includes("Surgery") && !p.outcome.includes("手術"))
-        .map(p => calculateHospitalizationDays(p.admissionDate, p.hospitalizationPeriod || p.followUpStatus, p.timestamp))
+        .map(p => calculateHospitalizationDays(p.admissionDate, p.hospitalizationPeriod || p.followUpStatus, p.timestamp, p.dischargeDate))
         .filter((d): d is number => d !== null);
 
     const avgHospitalizationConservative = conservativeHospitalizationDays.length > 0
@@ -328,7 +382,8 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
             const days = calculateHospitalizationDays(
                 p.admissionDate,
                 p.hospitalizationPeriod || p.followUpStatus,
-                p.timestamp
+                p.timestamp,
+                p.dischargeDate
             );
 
             if (days !== null && days >= 0) {
@@ -656,15 +711,19 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                         })()}
                                     </td>
                                     <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">
-                                        {patient.hospitalizationPeriod ? (
-                                            /\d/.test(String(patient.hospitalizationPeriod)) ?
-                                                // If it has a number, chances are it's days. If just a number "14", add " days".
-                                                // If string "14 days", just show it.
-                                                (String(patient.hospitalizationPeriod).includes("day") || String(patient.hospitalizationPeriod).includes("日")
-                                                    ? patient.hospitalizationPeriod
-                                                    : `${patient.hospitalizationPeriod} days`)
-                                                : patient.hospitalizationPeriod
-                                        ) : "-"}
+                                        {(() => {
+                                            // Use calculateHospitalizationDays to handle negative values correctly
+                                            const days = calculateHospitalizationDays(
+                                                patient.admissionDate,
+                                                patient.hospitalizationPeriod || patient.followUpStatus,
+                                                patient.timestamp,
+                                                patient.dischargeDate
+                                            );
+                                            if (days !== null && days >= 0) {
+                                                return `${days} days`;
+                                            }
+                                            return "-";
+                                        })()}
                                     </td>
                                     <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">
                                         {patient.procedure || "-"}
@@ -674,28 +733,32 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                             // Only show for surgery patients
                                             if (!patient.outcome.includes("Surgery") && !patient.outcome.includes("手術")) return "-";
 
-                                            // Use followUpStatus as fallback for discharge date (same as hospitalization logic)
-                                            const dischargeVal = patient.hospitalizationPeriod || patient.followUpStatus;
+                                            // First, get the total hospitalization days (with negative value handling)
+                                            const totalDays = calculateHospitalizationDays(
+                                                patient.admissionDate,
+                                                patient.hospitalizationPeriod || patient.followUpStatus,
+                                                patient.timestamp,
+                                                patient.dischargeDate
+                                            );
 
-                                            // Check if dischargeVal is a number (total days)
-                                            const isTotalDays = !isNaN(Number(dischargeVal)) && Number(dischargeVal) < 1000;
+                                            // Calculate pre-op days (Surgery - Admission)
+                                            const preOpDays = calculateHospitalizationDays(patient.admissionDate, patient.surgeryDate, patient.timestamp);
 
-                                            if (isTotalDays) {
-                                                // Calculate pre-op days (Surgery - Admission)
-                                                // Note: calculateHospitalizationDays handles date parsing for both
-                                                const preOpDays = calculateHospitalizationDays(patient.admissionDate, patient.surgeryDate, patient.timestamp);
-
-                                                if (preOpDays !== null) {
-                                                    const postOp = Number(dischargeVal) - preOpDays;
+                                            if (totalDays !== null && preOpDays !== null) {
+                                                const postOp = totalDays - preOpDays;
+                                                if (postOp >= 0) {
                                                     return `${postOp} days`;
                                                 }
                                             }
 
-                                            // If dischargeVal is a date, or fallback if pre-op calc failed
-                                            // Calculate days from Surgery Date to Discharge Date
-                                            const days = calculateHospitalizationDays(patient.surgeryDate, dischargeVal, patient.timestamp);
+                                            // Fallback: Calculate days from Surgery Date to Discharge Date directly
+                                            if (patient.surgeryDate && patient.dischargeDate) {
+                                                const days = calculateFromDates(patient.surgeryDate, patient.dischargeDate, patient.timestamp);
+                                                if (days !== null && days >= 0) {
+                                                    return `${days} days`;
+                                                }
+                                            }
 
-                                            if (days !== null) return `${days} days`;
                                             return "-";
                                         })()}
                                     </td>

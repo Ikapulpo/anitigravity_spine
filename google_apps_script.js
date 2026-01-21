@@ -1,3 +1,66 @@
+// Helper to parse flexible date formats (MM/DD or YYYY/MM/DD)
+function parseFlexibleDate(dateValue, baseYear) {
+    if (!dateValue) return null;
+
+    // If already a Date object
+    if (dateValue instanceof Date && !isNaN(dateValue.getTime())) {
+        return dateValue;
+    }
+
+    var str = String(dateValue).trim();
+    if (!str) return null;
+
+    // Check for MM/DD or MM-DD format
+    var mmDdMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})$/);
+    if (mmDdMatch) {
+        var month = parseInt(mmDdMatch[1]) - 1; // 0-indexed
+        var day = parseInt(mmDdMatch[2]);
+        return new Date(baseYear, month, day);
+    }
+
+    // Try standard parsing
+    var d = new Date(str);
+    if (!isNaN(d.getTime())) {
+        // If year is 2001 (default for some date parsing), use baseYear instead
+        if (d.getFullYear() === 2001) {
+            d.setFullYear(baseYear);
+        }
+        return d;
+    }
+
+    return null;
+}
+
+// Calculate hospitalization days from dates, handling year boundary
+function calculateDaysFromDates(admissionDate, dischargeDate, timestamp) {
+    if (!admissionDate || !dischargeDate) return null;
+
+    var baseYear = new Date().getFullYear();
+    if (timestamp instanceof Date && !isNaN(timestamp.getTime())) {
+        baseYear = timestamp.getFullYear();
+    } else if (timestamp) {
+        var ts = new Date(timestamp);
+        if (!isNaN(ts.getFullYear())) {
+            baseYear = ts.getFullYear();
+        }
+    }
+
+    var startDate = parseFlexibleDate(admissionDate, baseYear);
+    var endDate = parseFlexibleDate(dischargeDate, baseYear);
+
+    if (!startDate || !endDate) return null;
+
+    // Handle year boundary: if admission > discharge (e.g., Dec -> Jan)
+    if (startDate > endDate) {
+        startDate.setFullYear(baseYear - 1);
+    }
+
+    var diffTime = endDate.getTime() - startDate.getTime();
+    var diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    return diffDays >= 0 ? diffDays : null;
+}
+
 function doGet() {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
     var data = sheet.getDataRange().getValues();
@@ -36,6 +99,16 @@ function doGet() {
         record.surgeryDate = row[19];
         record.dischargeDate = row[20];
         record.hospitalizationPeriod = row[21]; // Explicit column
+
+        // Handle negative hospitalization period (year boundary issue)
+        // If hospitalizationPeriod is a negative number, recalculate from dates
+        if (typeof record.hospitalizationPeriod === 'number' && record.hospitalizationPeriod < 0) {
+            var recalculated = calculateDaysFromDates(record.admissionDate, record.dischargeDate, record.timestamp);
+            if (recalculated !== null) {
+                record.hospitalizationPeriod = recalculated;
+            }
+        }
+
         record.height = row[22];
         record.weight = row[23];
         record.bmi = row[24];
