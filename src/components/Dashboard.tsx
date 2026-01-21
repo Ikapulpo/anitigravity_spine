@@ -259,16 +259,27 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
     const postOpDaysList = yearFilteredPatients
         .filter(p => p.outcome.includes("Surgery") || p.outcome.includes("手術"))
         .map(p => {
-            const dischargeVal = p.hospitalizationPeriod || p.followUpStatus;
-            const isTotalDays = !isNaN(Number(dischargeVal)) && Number(dischargeVal) < 1000;
+            // Use calculateHospitalizationDays to get total days (handles negative values)
+            const totalDays = calculateHospitalizationDays(
+                p.admissionDate,
+                p.hospitalizationPeriod || p.followUpStatus,
+                p.timestamp,
+                p.dischargeDate
+            );
 
-            if (isTotalDays) {
+            if (totalDays !== null) {
                 const preOpDays = calculateHospitalizationDays(p.admissionDate, p.surgeryDate, p.timestamp);
                 if (preOpDays !== null) {
-                    return Number(dischargeVal) - preOpDays;
+                    return totalDays - preOpDays;
                 }
             }
-            return calculateHospitalizationDays(p.surgeryDate, dischargeVal, p.timestamp);
+
+            // Fallback: calculate from surgery date to discharge date directly
+            if (p.surgeryDate && p.dischargeDate) {
+                return calculateFromDates(p.surgeryDate, p.dischargeDate, p.timestamp);
+            }
+
+            return null;
         })
         .filter((d): d is number => d !== null && d >= 0); // Filter out null and negative values
 
@@ -280,17 +291,26 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
     const procedurePostOpData = yearFilteredPatients
         .filter(p => (p.outcome.includes("Surgery") || p.outcome.includes("手術")) && p.procedure)
         .reduce((acc: any[], curr) => {
-            const dischargeVal = curr.hospitalizationPeriod || curr.followUpStatus;
+            // Use calculateHospitalizationDays to get total days (handles negative values)
+            const totalDays = calculateHospitalizationDays(
+                curr.admissionDate,
+                curr.hospitalizationPeriod || curr.followUpStatus,
+                curr.timestamp,
+                curr.dischargeDate
+            );
+
             let days: number | null = null;
 
-            const isTotalDays = !isNaN(Number(dischargeVal)) && Number(dischargeVal) < 1000;
-            if (isTotalDays) {
+            if (totalDays !== null) {
                 const preOpDays = calculateHospitalizationDays(curr.admissionDate, curr.surgeryDate, curr.timestamp);
                 if (preOpDays !== null) {
-                    days = Number(dischargeVal) - preOpDays;
+                    days = totalDays - preOpDays;
                 }
-            } else {
-                days = calculateHospitalizationDays(curr.surgeryDate, dischargeVal, curr.timestamp);
+            }
+
+            // Fallback: calculate from surgery date to discharge date directly
+            if (days === null && curr.surgeryDate && curr.dischargeDate) {
+                days = calculateFromDates(curr.surgeryDate, curr.dischargeDate, curr.timestamp);
             }
 
             if (days !== null && days >= 0) {
