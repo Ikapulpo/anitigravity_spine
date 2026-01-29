@@ -34,6 +34,17 @@ import { logout } from "@/app/actions/auth";
 // Helper to calculate hospitalization days
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8"];
 
+// Normalize fall history values to categories
+const normalizeFallHistory = (value: string): "fall" | "no_fall" | "other" => {
+    const v = String(value || "").trim();
+    // Fall cases: "転倒あり", "Yes", etc.
+    if (v.includes("転倒あり") || v.toLowerCase() === "yes") return "fall";
+    // No fall cases: "なし", "No", etc.
+    if (v === "なし" || v.toLowerCase() === "no") return "no_fall";
+    // Other injury mechanisms: "高エネルギー外傷", empty, etc.
+    return "other";
+};
+
 // Helper to parse "MM-DD" or "YYYY-MM-DD" flexibly
 const parseFlexibleDate = (dateStr: string, fallbackYear: number): Date | null => {
     const cleanStr = String(dateStr).trim();
@@ -340,6 +351,22 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
         ? Math.round(timeToSurgeryList.reduce((a, b) => a + b, 0) / timeToSurgeryList.length)
         : 0;
 
+    // Fall Statistics
+    const fallStats = yearFilteredPatients.reduce(
+        (acc, p) => {
+            const status = normalizeFallHistory(p.fallHistory);
+            if (status === "fall") acc.fall++;
+            else if (status === "no_fall") acc.noFall++;
+            else acc.other++;
+            return acc;
+        },
+        { fall: 0, noFall: 0, other: 0 }
+    );
+
+    const fallRate = yearFilteredPatients.length > 0
+        ? Math.round((fallStats.fall / yearFilteredPatients.length) * 100)
+        : 0;
+
     const filteredPatients = yearFilteredPatients.filter((p) =>
         String(p.id).toLowerCase().includes(filter.toLowerCase()) ||
         String(p.outcome).toLowerCase().includes(filter.toLowerCase()) ||
@@ -363,7 +390,10 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
             surgeryDays: 0,
             surgeryCount: 0,
             conservativeDays: 0,
-            conservativeCount: 0
+            conservativeCount: 0,
+            fallCases: 0,
+            noFallCases: 0,
+            otherFallCases: 0
         };
         return acc;
     }, {} as Record<string, {
@@ -373,7 +403,10 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
         surgeryDays: number;
         surgeryCount: number;
         conservativeDays: number;
-        conservativeCount: number
+        conservativeCount: number;
+        fallCases: number;
+        noFallCases: number;
+        otherFallCases: number;
     }>);
 
     yearFilteredPatients.forEach(p => {
@@ -415,6 +448,16 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                     ageDataMap[group].conservativeCount++;
                 }
             }
+
+            // Fall tracking by age group
+            const fallStatus = normalizeFallHistory(p.fallHistory);
+            if (fallStatus === "fall") {
+                ageDataMap[group].fallCases++;
+            } else if (fallStatus === "no_fall") {
+                ageDataMap[group].noFallCases++;
+            } else {
+                ageDataMap[group].otherFallCases++;
+            }
         }
     });
 
@@ -432,6 +475,20 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
         Conservative: ageDataMap[group].conservativeCount > 0
             ? Math.round(ageDataMap[group].conservativeDays / ageDataMap[group].conservativeCount)
             : 0
+    }));
+
+    // Fall Distribution Pie Chart Data
+    const fallDistributionData = [
+        { name: "Fall", value: fallStats.fall },
+        { name: "No Fall", value: fallStats.noFall },
+        ...(fallStats.other > 0 ? [{ name: "Other", value: fallStats.other }] : [])
+    ];
+
+    // Fall by Age Group Bar Chart Data
+    const fallByAgeData = ageGroups.map(group => ({
+        name: group,
+        Fall: ageDataMap[group].fallCases,
+        "No Fall": ageDataMap[group].noFallCases
     }));
 
     return (
@@ -533,6 +590,26 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                     <div>
                         <p className="text-sm text-gray-500 font-medium">Avg. Time-to-Surgery</p>
                         <h3 className="text-2xl font-bold text-gray-900">{avgTimeToSurgery} days</h3>
+                    </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center">
+                    <div className="p-3 rounded-full bg-orange-100 text-orange-600 mr-4">
+                        <AlertCircle size={24} />
+                    </div>
+                    <div>
+                        <p className="text-sm text-gray-500 font-medium">Fall Cases</p>
+                        <h3 className="text-2xl font-bold text-gray-900">{fallStats.fall}</h3>
+                    </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center">
+                    <div className="p-3 rounded-full bg-cyan-100 text-cyan-600 mr-4">
+                        <Activity size={24} />
+                    </div>
+                    <div>
+                        <p className="text-sm text-gray-500 font-medium">Fall Rate</p>
+                        <h3 className="text-2xl font-bold text-gray-900">{fallRate}%</h3>
                     </div>
                 </div>
             </div>
@@ -643,6 +720,49 @@ export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
                                 <Legend />
                                 <Bar dataKey="Surgery" fill="#ef4444" radius={[4, 4, 0, 0]} name="Surgery (Days)" />
                                 <Bar dataKey="Conservative" fill="#f59e0b" radius={[4, 4, 0, 0]} name="Conservative (Days)" />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Injury Mechanism</h3>
+                    <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Pie
+                                    data={fallDistributionData}
+                                    cx="50%"
+                                    cy="50%"
+                                    innerRadius={60}
+                                    outerRadius={80}
+                                    fill="#8884d8"
+                                    paddingAngle={5}
+                                    dataKey="value"
+                                    label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
+                                >
+                                    {fallDistributionData.map((entry: any, index: number) => (
+                                        <Cell key={`cell-fall-${index}`} fill={COLORS[index % COLORS.length]} />
+                                    ))}
+                                </Pie>
+                                <Tooltip />
+                            </PieChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Fall by Age Group</h3>
+                    <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={fallByAgeData}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                <XAxis dataKey="name" />
+                                <YAxis allowDecimals={false} />
+                                <Tooltip cursor={{ fill: 'transparent' }} />
+                                <Legend />
+                                <Bar dataKey="Fall" stackId="a" fill="#FF8042" radius={[0, 0, 4, 4]} name="Fall" />
+                                <Bar dataKey="No Fall" stackId="a" fill="#00C49F" radius={[4, 4, 0, 0]} name="No Fall" />
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
