@@ -1,26 +1,26 @@
 @import "tailwindcss";
 
+@theme {
+  /* 治療群カラー: src/lib/colors.ts の COLOR と同値。
+     Recharts(SVG) は CSS クラスを読めないため TS 側と二重管理になっている。
+     変更時は必ず両方を更新すること。 */
+  --color-surgery: #fb7185; /* rose-400  手術 */
+  --color-conservative: #38bdf8; /* sky-400   保存 */
+  --color-accent: #22d3ee; /* cyan-400  アクセント */
+
+  --font-sans: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP",
+    "Yu Gothic UI", Meiryo, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo,
+    Consolas, monospace;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* ネイティブの select・スクロールバー等もダークで描画させる */
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: #020617; /* slate-950 */
+  color: #e2e8f0; /* slate-200 */
+  font-family: var(--font-sans);
 }

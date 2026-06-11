@@ -1,20 +1,10 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
-  title: "Spinal OVF Consult Dashboard",
-  description: "Dashboard for tracking spinal OVF consults and surgical status",
+  title: "脊椎OVFダッシュボード",
+  description:
+    "骨粗鬆症性椎体骨折（OVF）の疫学・在院日数・相関分析ダッシュボード",
 };
 
 export default function RootLayout({
@@ -23,12 +13,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
-      </body>
+    <html lang="ja">
+      <body className="antialiased">{children}</body>
     </html>
   );
 }

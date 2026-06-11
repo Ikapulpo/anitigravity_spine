@@ -75,6 +75,14 @@ function doGet() {
         // 12: Others/Remarks, 13: Pain, 14: Admission, 15: New Fractures, 16: Time to Admission
         // 17: Outcome, 18: Procedure, 19: Surgery Date, 20: Discharge Date, 21: Hospitalization Period
         // 22: Height, 23: Weight, 24: BMI, 25: Discharge Destination, 26: Follow-up Status, 27: Remarks 2
+        //
+        // --- 研究用の任意列（28〜42）。詳細は RESEARCH.md 参照 ---
+        // 28: 骨密度 YAM%, 29: 骨密度 Tスコア, 30: 入院時疼痛NRS, 31: 退院時疼痛NRS,
+        // 32: 入院時Barthel Index, 33: 退院時Barthel Index, 34: 退院時歩行能力,
+        // 35: 血清アルブミン, 36: 25(OH)ビタミンD, 37: 入院中合併症, 38: 新規隣接椎体骨折,
+        // 39: 90日以内再入院, 40: 死亡, 41: 装具, 42: 退院時骨粗鬆症治療薬
+        // 列が存在しない場合 row[i] は undefined となり JSON から省かれるため、
+        // 列を追加していない既存シートでもこのままデプロイして問題ない。
 
         record.timestamp = row[0];
         record.id = row[1];
@@ -116,6 +124,24 @@ function doGet() {
         record.followUpStatus = row[26];
         // record.dischargeDestination = row[21]; // Replaced above
         // record.followUpStatus = row[22]; // Replaced above
+
+        // 研究用の任意列（28〜42）
+        record.remarks2 = row[27];
+        record.bmdYamPercent = row[28];
+        record.bmdTScore = row[29];
+        record.nrsOnAdmission = row[30];
+        record.nrsAtDischarge = row[31];
+        record.barthelOnAdmission = row[32];
+        record.barthelAtDischarge = row[33];
+        record.ambulationAtDischarge = row[34];
+        record.albumin = row[35];
+        record.vitD25OH = row[36];
+        record.complications = row[37];
+        record.adjacentFracture = row[38];
+        record.readmission90d = row[39];
+        record.deathStatus = row[40];
+        record.braceType = row[41];
+        record.opMedAtDischarge = row[42];
 
         return record;
     });
