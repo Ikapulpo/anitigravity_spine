@@ -107,4 +107,4 @@ tabs: 概況 / 相関分析 / 症例一覧 (+ CSV export)
 | 27 | Remarks 2 |
 | 28–42 | Optional research fields (BMD YAM%/T-score, NRS, Barthel, ambulation, Alb, 25(OH)D, complications, adjacent fracture, readmission, death, brace, OP medication) |
 
-See `google_apps_script.js` for the full mapping and `RESEARCH.md` for the research-field definitions and usage guide.
+See `google_apps_script.js` for the full mapping, `SPECIFICATION.md` for the full functional specification (Japanese), and `RESEARCH.md` for the research-field definitions and usage guide.
