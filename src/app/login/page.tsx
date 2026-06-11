@@ -11,9 +11,9 @@ function SubmitButton() {
         <button
             type="submit"
             disabled={pending}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+            className="flex w-full justify-center rounded-md bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-slate-900 disabled:opacity-50"
         >
-            {pending ? "Signing in..." : "Sign in"}
+            {pending ? "サインイン中..." : "サインイン"}
         </button>
     );
 }
@@ -32,19 +32,25 @@ export default function LoginPage() {
         }
     }
 
+    const inputClass =
+        "block w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500";
+
     return (
-        <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+        <div className="flex min-h-screen flex-col justify-center py-12 sm:px-6 lg:px-8">
             <div className="sm:mx-auto sm:w-full sm:max-w-md">
-                <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-                    Sign in to Dashboard
-                </h2>
+                <h1 className="text-center text-2xl font-bold tracking-tight text-slate-100">
+                    脊椎OVFダッシュボード
+                </h1>
+                <p className="mt-2 text-center text-sm text-slate-500">
+                    サインインしてください
+                </p>
             </div>
 
             <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-                <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+                <div className="rounded-xl border border-slate-800 bg-slate-900/70 px-4 py-8 sm:px-10">
                     <form action={handleSubmit} className="space-y-6">
                         {error && (
-                            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm">
+                            <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
                                 {error}
                             </div>
                         )}
@@ -52,7 +58,7 @@ export default function LoginPage() {
                         <div>
                             <label
                                 htmlFor="username"
-                                className="block text-sm font-medium text-gray-700"
+                                className="block text-sm font-medium text-slate-400"
                             >
                                 ID
                             </label>
@@ -62,7 +68,7 @@ export default function LoginPage() {
                                     name="username"
                                     type="text"
                                     required
-                                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                    className={inputClass}
                                 />
                             </div>
                         </div>
@@ -70,9 +76,9 @@ export default function LoginPage() {
                         <div>
                             <label
                                 htmlFor="password"
-                                className="block text-sm font-medium text-gray-700"
+                                className="block text-sm font-medium text-slate-400"
                             >
-                                Password
+                                パスワード
                             </label>
                             <div className="mt-1">
                                 <input
@@ -80,7 +86,7 @@ export default function LoginPage() {
                                     name="password"
                                     type="password"
                                     required
-                                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                    className={inputClass}
                                 />
                             </div>
                         </div>

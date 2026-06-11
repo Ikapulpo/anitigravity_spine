@@ -1,951 +1,137 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import {
-    BarChart,
-    Bar,
-    XAxis,
-    YAxis,
-    CartesianGrid,
-    Tooltip,
-    Legend,
-    ResponsiveContainer,
-    PieChart,
-    Pie,
-    Cell,
-} from "recharts";
-import {
-    Activity,
-    Users,
-    AlertCircle,
-    Clock,
-    Search,
-    Filter,
-} from "lucide-react";
+// ダッシュボードのシェル。データの派生計算・グローバルフィルタ・タブ切替のみを
+// 担当し、画面の中身は tabs/ 以下の各タブコンポーネントに委譲する。
+// 相関分析の設定とテーブルの状態はタブ切替で消えないようここで保持する。
+
+import { useMemo, useState } from "react";
+import { LogOut } from "lucide-react";
+import clsx from "clsx";
 import { PatientRecord } from "@/types/patient";
-import { fetchPatients } from "@/services/dataService";
+import { derivePatient, TreatmentGroup } from "@/lib/derive";
 import { logout } from "@/app/actions/auth";
+import TabBar, { TabKey } from "@/components/ui/TabBar";
+import Select from "@/components/ui/Select";
+import OverviewTab from "@/components/tabs/OverviewTab";
+import AnalysisTab, {
+    AnalysisConfig,
+    DEFAULT_ANALYSIS_CONFIG,
+} from "@/components/tabs/AnalysisTab";
+import PatientsTab, {
+    DEFAULT_TABLE_STATE,
+    TableState,
+} from "@/components/tabs/PatientsTab";
 
-// Simple UI components (since we don't have the full shadcn/ui library installed via CLI yet, 
-// I'll implement basic versions or use raw HTML/Tailwind for now to avoid dependency issues 
-// if the user didn't want full shadcn setup. 
-// Wait, I can just use standard Tailwind classes for layout.)
-
-// Helper to calculate hospitalization days
-const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8"];
-
-// Normalize fall history values to categories
-const normalizeFallHistory = (value: string): "fall" | "no_fall" | "other" => {
-    const v = String(value || "").trim();
-    // Fall cases: "転倒あり", "Yes", etc.
-    if (v.includes("転倒あり") || v.toLowerCase() === "yes") return "fall";
-    // No fall cases: "なし", "No", etc.
-    if (v === "なし" || v.toLowerCase() === "no") return "no_fall";
-    // Other injury mechanisms: "高エネルギー外傷", empty, etc.
-    return "other";
-};
-
-// Helper to parse "MM-DD" or "YYYY-MM-DD" flexibly
-const parseFlexibleDate = (dateStr: string, fallbackYear: number): Date | null => {
-    const cleanStr = String(dateStr).trim();
-    if (!cleanStr) return null;
-
-    // Check for MM-DD format (e.g. "02-17" or "2/17")
-    const mmDdMatch = cleanStr.match(/^(\d{1,2})[^\d](\d{1,2})$/);
-    if (mmDdMatch) {
-        const month = parseInt(mmDdMatch[1]) - 1; // 0-indexed
-        const day = parseInt(mmDdMatch[2]);
-        return new Date(fallbackYear, month, day);
-    }
-
-    // Otherwise try standard parsing
-    const d = new Date(cleanStr);
-    if (!isNaN(d.getTime())) {
-        // If year is 2001 (default for Chrome/v8 on Mac for "MM-DD"), update it
-        if (d.getFullYear() === 2001) {
-            d.setFullYear(fallbackYear);
-        }
-        return d;
-    }
-
-    return null;
-};
-
-// Extract base year from timestamp
-const extractBaseYear = (timestamp: string): number => {
-    let baseYear = new Date().getFullYear();
-    if (timestamp) {
-        const tsDate = new Date(timestamp);
-        if (!isNaN(tsDate.getFullYear())) {
-            baseYear = tsDate.getFullYear();
-        }
-    }
-    return baseYear;
-};
-
-// Calculate hospitalization days from admission and discharge dates directly
-const calculateFromDates = (admissionStr: string, dischargeStr: string, timestamp: string): number | null => {
-    if (!admissionStr || !dischargeStr) return null;
-
-    const baseYear = extractBaseYear(timestamp);
-    const startDate = parseFlexibleDate(admissionStr, baseYear);
-    const endDate = parseFlexibleDate(dischargeStr, baseYear);
-
-    if (!startDate || !endDate) return null;
-
-    // Year boundary handling: if admission > discharge, assume year boundary crossing
-    // (e.g., admission in December, discharge in January)
-    if (startDate > endDate) {
-        startDate.setFullYear(baseYear - 1);
-    }
-
-    const diffTime = endDate.getTime() - startDate.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    return diffDays >= 0 ? diffDays : null;
-};
-
-const calculateHospitalizationDays = (
-    admission: string,
-    dischargeOrPeriod: string | number,
-    timestamp: string,
-    dischargeDate?: string  // Optional: explicit discharge date for fallback calculation
-): number | null => {
-    if (dischargeOrPeriod === null || dischargeOrPeriod === undefined || dischargeOrPeriod === "") return null;
-
-    const valStr = String(dischargeOrPeriod).trim();
-
-    // Case 1: It's a number (e.g. "14" or 14 or -350)
-    // We assume any number with absolute value < 1000 is a day count, not a year/date
-    const numericVal = Number(valStr);
-    if (!isNaN(numericVal) && Math.abs(numericVal) < 1000) {
-        // If positive, return as-is
-        if (numericVal >= 0) {
-            return Math.floor(numericVal);
-        }
-
-        // If negative, attempt to recalculate from admission and discharge dates
-        // This handles the case where Google Sheets calculation returned a negative value
-        // due to year boundary issues (e.g., admission 12/25, discharge 1/10)
-        if (admission && dischargeDate) {
-            const recalculated = calculateFromDates(admission, dischargeDate, timestamp);
-            if (recalculated !== null) {
-                return recalculated;
-            }
-        }
-
-        // If we can't recalculate, return null rather than the negative value
-        return null;
-    }
-
-    // Case 2: It looks like a date (e.g. "2025-03-03..." or "03-03")
-    // If admission is empty, it's an outpatient (or invalid), so return null (display "-")
-    if (!admission) return null;
-
-    // Optimization: if strings are identical, 0 days
-    if (valStr === String(admission).trim()) return 0;
-
-    // Case 3: It looks like a date AND admission exists
-    const isDate = !isNaN(Date.parse(valStr)) || valStr.includes("-") || valStr.includes("/");
-
-    if (isDate) {
-        const baseYear = extractBaseYear(timestamp);
-
-        let startDate = parseFlexibleDate(admission, baseYear);
-        let endDate = parseFlexibleDate(valStr, baseYear);
-
-        // Handle year boundary: if Admission > Discharge (e.g. Adm: Dec, Dis: Jan),
-        // and assuming timestamp is close to discharge/current,
-        // then Admission was likely previous year.
-        if (startDate && endDate) {
-            if (startDate > endDate) {
-                startDate.setFullYear(baseYear - 1);
-            }
-
-            const diffTime = endDate.getTime() - startDate.getTime();
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-            if (diffDays >= 0) {
-                return diffDays;
-            }
-        }
-    }
-
-    // Fallback: try parsing integer from string if it contains "days"
-    const parsed = parseInt(valStr.replace(/[^0-9]/g, ''));
-    return (!isNaN(parsed) && parsed < 1000) ? parsed : null;
-};
+const TREATMENT_FILTERS: {
+    key: "all" | TreatmentGroup;
+    label: string;
+    activeClass: string;
+}[] = [
+    { key: "all", label: "全体", activeClass: "bg-slate-700 text-slate-100" },
+    { key: "surgery", label: "手術", activeClass: "bg-rose-500/20 text-rose-300" },
+    { key: "conservative", label: "保存", activeClass: "bg-sky-500/20 text-sky-300" },
+];
 
 export default function Dashboard({ patients }: { patients: PatientRecord[] }) {
-    const [filter, setFilter] = useState("");
-    const [selectedYear, setSelectedYear] = useState<string>("All");
+    const [tab, setTab] = useState<TabKey>("overview");
+    const [selectedYear, setSelectedYear] = useState("All");
+    const [treatmentFilter, setTreatmentFilter] = useState<"all" | TreatmentGroup>("all");
+    const [analysisConfig, setAnalysisConfig] = useState<AnalysisConfig>(DEFAULT_ANALYSIS_CONFIG);
+    const [tableState, setTableState] = useState<TableState>(DEFAULT_TABLE_STATE);
 
-    // Extract available years from timestamp
-    const years = Array.from(new Set(patients.map(p => {
-        const date = new Date(p.timestamp);
-        return isNaN(date.getFullYear()) ? null : String(date.getFullYear());
-    }).filter((y): y is string => y !== null))).sort().reverse();
+    const derived = useMemo(() => patients.map(derivePatient), [patients]);
 
-    // Filter patients by year
-    const yearFilteredPatients = selectedYear === "All"
-        ? patients
-        : patients.filter(p => String(new Date(p.timestamp).getFullYear()) === selectedYear);
-
-    // Aggregations based on yearFilteredPatients
-    const totalPatients = yearFilteredPatients.length;
-    const surgeryCandidates = yearFilteredPatients.filter((p) =>
-        p.outcome.includes("Surgery") ||
-        p.outcome.includes("手術") ||
-        p.remarks.toLowerCase().includes("surgery")
-    ).length;
-    const observationPatients = yearFilteredPatients.filter((p) =>
-        p.outcome.includes("Observation") ||
-        p.outcome.includes("Conservative") ||
-        p.outcome.includes("保存") ||
-        p.outcome.includes("経過観察")
-    ).length;
-
-    // Chart Data
-    const outcomeData = yearFilteredPatients.reduce((acc: any[], curr) => {
-        const name = curr.outcome ? curr.outcome : "Unknown"; // Label empty as Unknown
-        const existing = acc.find((item) => item.name === name);
-        if (existing) {
-            existing.value++;
-        } else {
-            acc.push({ name: name, value: 1 });
-        }
-        return acc;
-    }, []);
-
-    const fractureLevelData = yearFilteredPatients.reduce((acc: any[], curr) => {
-        // Use newFractures instead of fractureLevel as requested
-        const rawLevel = String(curr.newFractures || "Unknown");
-
-        // Split by comma or space to handle multiple fractures (e.g., "L1, L2")
-        const levels = rawLevel.split(/[,、\s]+/).filter(Boolean);
-
-        if (levels.length === 0) levels.push("Unknown");
-
-        levels.forEach(level => {
-            const existing = acc.find((item) => item.name === level);
-            if (existing) {
-                existing.value++;
-            } else {
-                acc.push({ name: level, value: 1 });
-            }
-        });
-        return acc;
-    }, []).sort((a: any, b: any) => {
-        const getLevelVal = (name: string) => {
-            const n = name.toUpperCase();
-            if (n.startsWith("T")) return 100 + (parseInt(n.substring(1)) || 0); // T1-T12 -> 101-112
-            if (n.startsWith("L")) return 200 + (parseInt(n.substring(1)) || 0); // L1-L5 -> 201-205
-            if (n === "UNKNOWN") return 999;
-            return 300; // Others
-        };
-        return getLevelVal(a.name) - getLevelVal(b.name);
-    });
-
-    // Calculate Average Hospitalization Period (Surgery Only)
-    const surgeryHospitalizationDays = yearFilteredPatients
-        .filter(p => p.outcome.includes("Surgery") || p.outcome.includes("手術"))
-        .map(p => calculateHospitalizationDays(p.admissionDate, p.hospitalizationPeriod || p.followUpStatus, p.timestamp, p.dischargeDate))
-        .filter((d): d is number => d !== null);
-
-    const avgHospitalizationSurgery = surgeryHospitalizationDays.length > 0
-        ? Math.round(surgeryHospitalizationDays.reduce((a, b) => a + b, 0) / surgeryHospitalizationDays.length)
-        : 0;
-
-    // Calculate Average Hospitalization Period (Conservative Only)
-    const conservativeHospitalizationDays = yearFilteredPatients
-        .filter(p => !p.outcome.includes("Surgery") && !p.outcome.includes("手術"))
-        .map(p => calculateHospitalizationDays(p.admissionDate, p.hospitalizationPeriod || p.followUpStatus, p.timestamp, p.dischargeDate))
-        .filter((d): d is number => d !== null);
-
-    const avgHospitalizationConservative = conservativeHospitalizationDays.length > 0
-        ? Math.round(conservativeHospitalizationDays.reduce((a, b) => a + b, 0) / conservativeHospitalizationDays.length)
-        : 0;
-
-    // Calculate Average Post-op Days
-    const postOpDaysList = yearFilteredPatients
-        .filter(p => p.outcome.includes("Surgery") || p.outcome.includes("手術"))
-        .map(p => {
-            // Use calculateHospitalizationDays to get total days (handles negative values)
-            const totalDays = calculateHospitalizationDays(
-                p.admissionDate,
-                p.hospitalizationPeriod || p.followUpStatus,
-                p.timestamp,
-                p.dischargeDate
-            );
-
-            if (totalDays !== null) {
-                const preOpDays = calculateHospitalizationDays(p.admissionDate, p.surgeryDate, p.timestamp);
-                if (preOpDays !== null) {
-                    return totalDays - preOpDays;
-                }
-            }
-
-            // Fallback: calculate from surgery date to discharge date directly
-            if (p.surgeryDate && p.dischargeDate) {
-                return calculateFromDates(p.surgeryDate, p.dischargeDate, p.timestamp);
-            }
-
-            return null;
-        })
-        .filter((d): d is number => d !== null && d >= 0); // Filter out null and negative values
-
-    const avgPostOpDays = postOpDaysList.length > 0
-        ? Math.round(postOpDaysList.reduce((a, b) => a + b, 0) / postOpDaysList.length)
-        : 0;
-
-    // Calculate Avg Post-op Days by Procedure
-    const procedurePostOpData = yearFilteredPatients
-        .filter(p => (p.outcome.includes("Surgery") || p.outcome.includes("手術")) && p.procedure)
-        .reduce((acc: any[], curr) => {
-            // Use calculateHospitalizationDays to get total days (handles negative values)
-            const totalDays = calculateHospitalizationDays(
-                curr.admissionDate,
-                curr.hospitalizationPeriod || curr.followUpStatus,
-                curr.timestamp,
-                curr.dischargeDate
-            );
-
-            let days: number | null = null;
-
-            if (totalDays !== null) {
-                const preOpDays = calculateHospitalizationDays(curr.admissionDate, curr.surgeryDate, curr.timestamp);
-                if (preOpDays !== null) {
-                    days = totalDays - preOpDays;
-                }
-            }
-
-            // Fallback: calculate from surgery date to discharge date directly
-            if (days === null && curr.surgeryDate && curr.dischargeDate) {
-                days = calculateFromDates(curr.surgeryDate, curr.dischargeDate, curr.timestamp);
-            }
-
-            if (days !== null && days >= 0) {
-                const existing = acc.find((item) => item.name === curr.procedure);
-                if (existing) {
-                    existing.totalDays += days;
-                    existing.count++;
-                    existing.value = Math.round(existing.totalDays / existing.count);
-                } else {
-                    acc.push({ name: curr.procedure, totalDays: days, count: 1, value: days });
-                }
-            }
-            return acc;
-        }, [])
-        .sort((a: any, b: any) => b.value - a.value);
-
-    // Calculate Average Time-to-Surgery (Injury Date to Surgery Date)
-    const timeToSurgeryList = yearFilteredPatients
-        .filter(p => p.outcome.includes("Surgery") || p.outcome.includes("手術"))
-        .map(p => {
-            const days = calculateHospitalizationDays(p.injuryDate, p.surgeryDate, p.timestamp);
-            return days;
-        })
-        .filter((d): d is number => d !== null && d >= 0);
-
-    const avgTimeToSurgery = timeToSurgeryList.length > 0
-        ? Math.round(timeToSurgeryList.reduce((a, b) => a + b, 0) / timeToSurgeryList.length)
-        : 0;
-
-    // Fall Statistics
-    const fallStats = yearFilteredPatients.reduce(
-        (acc, p) => {
-            const status = normalizeFallHistory(p.fallHistory);
-            if (status === "fall") acc.fall++;
-            else if (status === "no_fall") acc.noFall++;
-            else acc.other++;
-            return acc;
-        },
-        { fall: 0, noFall: 0, other: 0 }
+    const years = useMemo(
+        () =>
+            Array.from(
+                new Set(derived.map((d) => d.yearLabel).filter((y): y is string => y !== null))
+            )
+                .sort()
+                .reverse(),
+        [derived]
     );
 
-    const fallRate = yearFilteredPatients.length > 0
-        ? Math.round((fallStats.fall / yearFilteredPatients.length) * 100)
-        : 0;
-
-    const filteredPatients = yearFilteredPatients.filter((p) =>
-        String(p.id).toLowerCase().includes(filter.toLowerCase()) ||
-        String(p.outcome).toLowerCase().includes(filter.toLowerCase()) ||
-        String(p.newFractures).toLowerCase().includes(filter.toLowerCase())
+    const filtered = useMemo(
+        () =>
+            derived.filter(
+                (d) =>
+                    (selectedYear === "All" || d.yearLabel === selectedYear) &&
+                    (treatmentFilter === "all" || d.treatmentGroup === treatmentFilter)
+            ),
+        [derived, selectedYear, treatmentFilter]
     );
-
-    // Data for new comparison chart
-    const hospitalizationComparisonData = [
-        { name: "Surgery", value: avgHospitalizationSurgery, fill: "#ef4444" }, // Red
-        { name: "Conservative", value: avgHospitalizationConservative, fill: "#f59e0b" }, // Amber
-    ];
-
-    // Age Group Data Processing
-    const ageGroups = ["<60", "60-69", "70-79", "80-89", "90+"];
-
-    const ageDataMap = ageGroups.reduce((acc, group) => {
-        acc[group] = {
-            count: 0,
-            surgeryCases: 0,
-            otherCases: 0,
-            surgeryDays: 0,
-            surgeryCount: 0,
-            conservativeDays: 0,
-            conservativeCount: 0,
-            fallCases: 0,
-            noFallCases: 0,
-            otherFallCases: 0
-        };
-        return acc;
-    }, {} as Record<string, {
-        count: number;
-        surgeryCases: number;
-        otherCases: number;
-        surgeryDays: number;
-        surgeryCount: number;
-        conservativeDays: number;
-        conservativeCount: number;
-        fallCases: number;
-        noFallCases: number;
-        otherFallCases: number;
-    }>);
-
-    yearFilteredPatients.forEach(p => {
-        const age = p.age;
-        let group = "";
-        if (age < 60) group = "<60";
-        else if (age < 70) group = "60-69";
-        else if (age < 80) group = "70-79";
-        else if (age < 90) group = "80-89";
-        else group = "90+";
-
-        if (ageDataMap[group]) {
-            // Case Count
-            ageDataMap[group].count++;
-            const isSurgery = p.outcome.includes("Surgery") || p.outcome.includes("手術");
-
-            if (isSurgery) {
-                ageDataMap[group].surgeryCases++;
-            } else {
-                ageDataMap[group].otherCases++;
-            }
-
-            // Hospitalization Days
-            // Use admissionDate for start. For discharge, try hospitalizationPeriod (often just a number days) or followUpStatus
-            // Reuse logic from calculateHospitalizationDays which handles "14" (days) or "2023-10-xx" (date)
-            const days = calculateHospitalizationDays(
-                p.admissionDate,
-                p.hospitalizationPeriod || p.followUpStatus,
-                p.timestamp,
-                p.dischargeDate
-            );
-
-            if (days !== null && days >= 0) {
-                if (isSurgery) {
-                    ageDataMap[group].surgeryDays += days;
-                    ageDataMap[group].surgeryCount++;
-                } else {
-                    ageDataMap[group].conservativeDays += days;
-                    ageDataMap[group].conservativeCount++;
-                }
-            }
-
-            // Fall tracking by age group
-            const fallStatus = normalizeFallHistory(p.fallHistory);
-            if (fallStatus === "fall") {
-                ageDataMap[group].fallCases++;
-            } else if (fallStatus === "no_fall") {
-                ageDataMap[group].noFallCases++;
-            } else {
-                ageDataMap[group].otherFallCases++;
-            }
-        }
-    });
-
-    const ageDistributionData = ageGroups.map(group => ({
-        name: group,
-        Surgery: ageDataMap[group].surgeryCases,
-        Others: ageDataMap[group].otherCases
-    }));
-
-    const ageHospitalizationData = ageGroups.map(group => ({
-        name: group,
-        Surgery: ageDataMap[group].surgeryCount > 0
-            ? Math.round(ageDataMap[group].surgeryDays / ageDataMap[group].surgeryCount)
-            : 0,
-        Conservative: ageDataMap[group].conservativeCount > 0
-            ? Math.round(ageDataMap[group].conservativeDays / ageDataMap[group].conservativeCount)
-            : 0
-    }));
-
-    // Fall Distribution Pie Chart Data
-    const fallDistributionData = [
-        { name: "Fall", value: fallStats.fall },
-        { name: "No Fall", value: fallStats.noFall },
-        ...(fallStats.other > 0 ? [{ name: "Other", value: fallStats.other }] : [])
-    ];
-
-    // Fall by Age Group Bar Chart Data
-    const fallByAgeData = ageGroups.map(group => ({
-        name: group,
-        Fall: ageDataMap[group].fallCases,
-        "No Fall": ageDataMap[group].noFallCases
-    }));
 
     return (
-        <div className="min-h-screen bg-gray-50 p-4 md:p-8 font-sans">
-            <header className="mb-6 md:mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="mx-auto min-h-screen max-w-screen-2xl px-4 py-6 md:px-8">
+            <header className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                    <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">
-                        Spinal OVF Consult Dashboard
+                    <h1 className="text-xl font-bold tracking-tight text-slate-100 md:text-2xl">
+                        脊椎OVFダッシュボード
                     </h1>
-                    <p className="text-sm md:text-base text-gray-500 mt-2">Overview of patient consults and surgical status</p>
+                    <p className="mt-1 text-sm text-slate-500">
+                        骨粗鬆症性椎体骨折の疫学・治療・転帰　|　表示中{" "}
+                        <span className="font-semibold text-slate-300">{filtered.length}</span> 件 / 全{" "}
+                        {derived.length} 件
+                    </p>
                 </div>
-                <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-700">Year:</span>
-                    <select
+
+                <div className="flex flex-wrap items-center gap-3">
+                    <Select
+                        label="年"
                         value={selectedYear}
                         onChange={(e) => setSelectedYear(e.target.value)}
-                        className="p-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                        <option value="All">All Years</option>
-                        {years.map(year => (
-                            <option key={year} value={year}>{year}</option>
+                        <option value="All">すべて</option>
+                        {years.map((y) => (
+                            <option key={y} value={y}>
+                                {y}年
+                            </option>
                         ))}
-                    </select>
+                    </Select>
+
+                    <div className="flex items-center rounded-lg border border-slate-700 bg-slate-900 p-0.5">
+                        {TREATMENT_FILTERS.map((f) => (
+                            <button
+                                key={f.key}
+                                onClick={() => setTreatmentFilter(f.key)}
+                                className={clsx(
+                                    "rounded-md px-3 py-1 text-xs font-medium transition-colors",
+                                    treatmentFilter === f.key
+                                        ? f.activeClass
+                                        : "text-slate-400 hover:text-slate-200"
+                                )}
+                            >
+                                {f.label}
+                            </button>
+                        ))}
+                    </div>
+
                     <button
                         onClick={() => logout()}
-                        className="ml-4 px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        className="flex items-center gap-1.5 rounded-md border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-400 transition-colors hover:text-slate-200"
                     >
-                        Logout
+                        <LogOut size={13} />
+                        ログアウト
                     </button>
                 </div>
             </header>
 
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 mb-8">
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center">
-                    <div className="p-3 rounded-full bg-blue-100 text-blue-600 mr-4">
-                        <Users size={24} />
-                    </div>
-                    <div>
-                        <p className="text-sm text-gray-500 font-medium">Total Consults</p>
-                        <h3 className="text-2xl font-bold text-gray-900">{totalPatients}</h3>
-                    </div>
-                </div>
+            <TabBar active={tab} onChange={setTab} />
 
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center">
-                    <div className="p-3 rounded-full bg-red-100 text-red-600 mr-4">
-                        <Activity size={24} />
-                    </div>
-                    <div>
-                        <p className="text-sm text-gray-500 font-medium">Surgery Candidates</p>
-                        <h3 className="text-2xl font-bold text-gray-900">{surgeryCandidates}</h3>
-                    </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center">
-                    <div className="p-3 rounded-full bg-amber-100 text-amber-600 mr-4">
-                        <Clock size={24} />
-                    </div>
-                    <div>
-                        <p className="text-sm text-gray-500 font-medium">Observation / Conservative</p>
-                        <h3 className="text-2xl font-bold text-gray-900">{observationPatients}</h3>
-                    </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center">
-                    <div className="p-3 rounded-full bg-green-100 text-green-600 mr-4">
-                        <Activity size={24} />
-                    </div>
-                    <div>
-                        <p className="text-sm text-gray-500 font-medium">Avg. Total Stay (Surgery)</p>
-                        <h3 className="text-2xl font-bold text-gray-900">{avgHospitalizationSurgery} days</h3>
-                    </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center">
-                    <div className="p-3 rounded-full bg-teal-100 text-teal-600 mr-4">
-                        <Activity size={24} />
-                    </div>
-                    <div>
-                        <p className="text-sm text-gray-500 font-medium">Avg. Total Stay (Conservative)</p>
-                        <h3 className="text-2xl font-bold text-gray-900">{avgHospitalizationConservative} days</h3>
-                    </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center">
-                    <div className="p-3 rounded-full bg-indigo-100 text-indigo-600 mr-4">
-                        <Activity size={24} />
-                    </div>
-                    <div>
-                        <p className="text-sm text-gray-500 font-medium">Avg. Post-op Days</p>
-                        <h3 className="text-2xl font-bold text-gray-900">{avgPostOpDays} days</h3>
-                    </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center">
-                    <div className="p-3 rounded-full bg-purple-100 text-purple-600 mr-4">
-                        <Clock size={24} />
-                    </div>
-                    <div>
-                        <p className="text-sm text-gray-500 font-medium">Avg. Time-to-Surgery</p>
-                        <h3 className="text-2xl font-bold text-gray-900">{avgTimeToSurgery} days</h3>
-                    </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center">
-                    <div className="p-3 rounded-full bg-orange-100 text-orange-600 mr-4">
-                        <AlertCircle size={24} />
-                    </div>
-                    <div>
-                        <p className="text-sm text-gray-500 font-medium">Fall Cases</p>
-                        <h3 className="text-2xl font-bold text-gray-900">{fallStats.fall}</h3>
-                    </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center">
-                    <div className="p-3 rounded-full bg-cyan-100 text-cyan-600 mr-4">
-                        <Activity size={24} />
-                    </div>
-                    <div>
-                        <p className="text-sm text-gray-500 font-medium">Fall Rate</p>
-                        <h3 className="text-2xl font-bold text-gray-900">{fallRate}%</h3>
-                    </div>
-                </div>
-            </div>
-
-            {/* Charts Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Treatment Distribution</h3>
-                    <div className="h-64">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                                <Pie
-                                    data={outcomeData}
-                                    cx="50%"
-                                    cy="50%"
-                                    innerRadius={60}
-                                    outerRadius={80}
-                                    fill="#8884d8"
-                                    paddingAngle={5}
-                                    dataKey="value"
-                                    label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
-                                >
-                                    {outcomeData.map((entry: any, index: number) => (
-                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                    ))}
-                                </Pie>
-                                <Tooltip />
-                            </PieChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Fracture Levels</h3>
-                    <div className="h-64">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={fractureLevelData}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                <XAxis dataKey="name" />
-                                <YAxis allowDecimals={false} />
-                                <Tooltip cursor={{ fill: 'transparent' }} />
-                                <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Avg Post-op Days by Procedure</h3>
-                    <div className="h-64">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={procedurePostOpData}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                <XAxis dataKey="name" />
-                                <YAxis allowDecimals={false} />
-                                <Tooltip cursor={{ fill: 'transparent' }} />
-                                <Bar dataKey="value" fill="#10b981" radius={[4, 4, 0, 0]} name="Days" />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Hospitalization: Surgery vs Conservative</h3>
-                    <div className="h-64">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={hospitalizationComparisonData}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                <XAxis dataKey="name" />
-                                <YAxis allowDecimals={false} />
-                                <Tooltip cursor={{ fill: 'transparent' }} />
-                                <Bar dataKey="value" radius={[4, 4, 0, 0]} name="Days">
-                                    {hospitalizationComparisonData.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                                    ))}
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Case Count by Age Group</h3>
-                    <div className="h-64">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={ageDistributionData}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                <XAxis dataKey="name" />
-                                <YAxis allowDecimals={false} />
-                                <Tooltip cursor={{ fill: 'transparent' }} />
-                                <Legend />
-                                <Bar dataKey="Surgery" stackId="a" fill="#ef4444" radius={[0, 0, 4, 4]} name="Surgery" />
-                                <Bar dataKey="Others" stackId="a" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Others" />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Avg Total Stay by Age Group</h3>
-                    <div className="h-64">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={ageHospitalizationData}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                <XAxis dataKey="name" />
-                                <YAxis allowDecimals={false} />
-                                <Tooltip cursor={{ fill: 'transparent' }} />
-                                <Legend />
-                                <Bar dataKey="Surgery" fill="#ef4444" radius={[4, 4, 0, 0]} name="Surgery (Days)" />
-                                <Bar dataKey="Conservative" fill="#f59e0b" radius={[4, 4, 0, 0]} name="Conservative (Days)" />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Injury Mechanism</h3>
-                    <div className="h-64">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                                <Pie
-                                    data={fallDistributionData}
-                                    cx="50%"
-                                    cy="50%"
-                                    innerRadius={60}
-                                    outerRadius={80}
-                                    fill="#8884d8"
-                                    paddingAngle={5}
-                                    dataKey="value"
-                                    label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
-                                >
-                                    {fallDistributionData.map((entry: any, index: number) => (
-                                        <Cell key={`cell-fall-${index}`} fill={COLORS[index % COLORS.length]} />
-                                    ))}
-                                </Pie>
-                                <Tooltip />
-                            </PieChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Fall by Age Group</h3>
-                    <div className="h-64">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={fallByAgeData}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                <XAxis dataKey="name" />
-                                <YAxis allowDecimals={false} />
-                                <Tooltip cursor={{ fill: 'transparent' }} />
-                                <Legend />
-                                <Bar dataKey="Fall" stackId="a" fill="#FF8042" radius={[0, 0, 4, 4]} name="Fall" />
-                                <Bar dataKey="No Fall" stackId="a" fill="#00C49F" radius={[4, 4, 0, 0]} name="No Fall" />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-            </div>
-
-            {/* Patient Table */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <h3 className="text-lg font-semibold text-gray-900">Patient List</h3>
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                        <input
-                            type="text"
-                            placeholder="Search patients..."
-                            value={filter}
-                            onChange={(e) => setFilter(e.target.value)}
-                            className="pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full md:w-64"
-                        />
-                    </div>
-                </div>
-
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm text-gray-600">
-                        <thead className="bg-gray-50 text-xs uppercase font-semibold text-gray-500">
-                            <tr>
-                                <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">ID</th>
-                                <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Age / Gender</th>
-                                <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Admission Date</th>
-                                <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Surgery Date</th>
-                                <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Hospitalization</th>
-                                <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Procedure</th>
-                                <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Post-op Days</th>
-                                <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">MRI</th>
-                                <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">Outcome</th>
-                                <th className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">OF Classification</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                            {filteredPatients.map((patient) => (
-                                <tr key={patient.id} className="hover:bg-gray-50 transition-colors">
-                                    <td className="px-3 py-3 md:px-6 md:py-4 font-medium text-gray-900 whitespace-nowrap">{patient.id}</td>
-                                    <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">{patient.age} / {patient.gender}</td>
-                                    <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">{patient.admissionDate || "outpatient"}</td>
-                                    <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">
-                                        {(() => {
-                                            if (!patient.surgeryDate) return "-";
-                                            // 1. Try straightforward parsing first
-                                            // Reuse helper logic from calculateHospitalizationDays concepts but simpler for display
-                                            // Or better, extract a reusable helper? For now, inline logic for display fix.
-
-                                            const valStr = String(patient.surgeryDate).trim();
-                                            // Match MM/DD or MM-DD or M/D
-                                            const match = valStr.match(/^(\d{1,2})[\/\-](\d{1,2})$/);
-
-                                            // Determine base year from timestamp, default to current year
-                                            let year = new Date().getFullYear();
-                                            if (patient.timestamp) {
-                                                const tsDate = new Date(patient.timestamp);
-                                                if (!isNaN(tsDate.getFullYear())) {
-                                                    year = tsDate.getFullYear();
-                                                }
-                                            }
-
-                                            if (match) {
-                                                const month = match[1].padStart(2, '0');
-                                                const day = match[2].padStart(2, '0');
-                                                // Check for year boundary? 
-                                                // Use logic: if Admission date exists and is Dec, and Surgery is Jan, increment year.
-                                                // But simplistic approach: use timestamp year.
-                                                // The user example is 11/25, which is simple.
-                                                return `${year}/${month}/${day}`;
-                                            }
-
-                                            // If it already contains year (YYYY/MM/DD or YYYY-MM-DD)
-                                            const date = new Date(valStr);
-                                            if (!isNaN(date.getTime())) {
-                                                // Checks if year is 2001 (default for Chrome/node for MM-DD)
-                                                if (date.getFullYear() === 2001) {
-                                                    date.setFullYear(year);
-                                                }
-                                                return date.toLocaleDateString("ja-JP", { year: 'numeric', month: '2-digit', day: '2-digit' });
-                                            }
-
-                                            return valStr;
-                                        })()}
-                                    </td>
-                                    <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">
-                                        {(() => {
-                                            // Use calculateHospitalizationDays to handle negative values correctly
-                                            const days = calculateHospitalizationDays(
-                                                patient.admissionDate,
-                                                patient.hospitalizationPeriod || patient.followUpStatus,
-                                                patient.timestamp,
-                                                patient.dischargeDate
-                                            );
-                                            if (days !== null && days >= 0) {
-                                                return `${days} days`;
-                                            }
-                                            return "-";
-                                        })()}
-                                    </td>
-                                    <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">
-                                        {patient.procedure || "-"}
-                                    </td>
-                                    <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">
-                                        {(() => {
-                                            // Only show for surgery patients
-                                            if (!patient.outcome.includes("Surgery") && !patient.outcome.includes("手術")) return "-";
-
-                                            // First, get the total hospitalization days (with negative value handling)
-                                            const totalDays = calculateHospitalizationDays(
-                                                patient.admissionDate,
-                                                patient.hospitalizationPeriod || patient.followUpStatus,
-                                                patient.timestamp,
-                                                patient.dischargeDate
-                                            );
-
-                                            // Calculate pre-op days (Surgery - Admission)
-                                            const preOpDays = calculateHospitalizationDays(patient.admissionDate, patient.surgeryDate, patient.timestamp);
-
-                                            if (totalDays !== null && preOpDays !== null) {
-                                                const postOp = totalDays - preOpDays;
-                                                if (postOp >= 0) {
-                                                    return `${postOp} days`;
-                                                }
-                                            }
-
-                                            // Fallback: Calculate days from Surgery Date to Discharge Date directly
-                                            if (patient.surgeryDate && patient.dischargeDate) {
-                                                const days = calculateFromDates(patient.surgeryDate, patient.dischargeDate, patient.timestamp);
-                                                if (days !== null && days >= 0) {
-                                                    return `${days} days`;
-                                                }
-                                            }
-
-                                            return "-";
-                                        })()}
-                                    </td>
-                                    <td className="px-3 py-3 md:px-6 md:py-4 min-w-[120px]">
-                                        {patient.mriImage ? (
-                                            <div className="flex flex-col gap-1">
-                                                {patient.mriImage.split(/[,、\s]+/).filter(url => url.trim().startsWith('http')).map((url, index) => (
-                                                    <a
-                                                        key={index}
-                                                        href={url.trim()}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
-                                                    >
-                                                        <Search size={16} />
-                                                        <span className="text-xs">View {index + 1}</span>
-                                                    </a>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <span className="text-gray-400">-</span>
-                                        )}
-                                    </td>
-                                    <td className="px-3 py-3 md:px-6 md:py-4 whitespace-nowrap">
-                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${patient.outcome.includes("Surgery") || patient.outcome.includes("手術")
-                                            ? "bg-red-100 text-red-800"
-                                            : "bg-green-100 text-green-800"
-                                            }`}>
-                                            {patient.outcome}
-                                        </span>
-                                    </td>
-                                    <td className="px-3 py-3 md:px-6 md:py-4 text-gray-500 whitespace-nowrap">
-                                        {patient.ofClassification || "-"}
-                                    </td>
-                                </tr>
-                            ))}
-                            {filteredPatients.length === 0 && (
-                                <tr>
-                                    <td colSpan={10} className="px-6 py-8 text-center text-gray-400">
-                                        No patients found matching your search.
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+            {/* アクティブタブのみマウントする（多数の ResponsiveContainer の同時描画を回避） */}
+            <main className="mt-6">
+                {tab === "overview" && <OverviewTab data={filtered} />}
+                {tab === "analysis" && (
+                    <AnalysisTab
+                        data={filtered}
+                        config={analysisConfig}
+                        onChange={setAnalysisConfig}
+                    />
+                )}
+                {tab === "patients" && (
+                    <PatientsTab data={filtered} state={tableState} onChange={setTableState} />
+                )}
+            </main>
         </div>
     );
 }
